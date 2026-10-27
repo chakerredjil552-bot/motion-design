@@ -21,6 +21,7 @@ Reuse existing context. Do not ask the user for camera or timing terms.
 1. **Shot-by-shot generation.** The skill default is one full-film request. Anime needs per-shot character locking and clear camera moves, so this preset generates one clip per shot (3–5 s each), every clip conditioned on the character sheet and style frame, then assembles them in order. This is a user-requested departure from production.md's single-request default; record it in `campaign.json` as `generation_strategy: "per_shot_with_character_reference"`. If the user asks for one film request, use the single-request path with the same prompt text.
 2. **References are required**, not optional: the approved character sheet plus one style frame.
 3. Default 20 s, 16:9, 24 fps feel (deliver at the model's native rate; do not claim 24 fps unless verified). Music plus synchronized effects, no narration.
+4. **60 fps delivery** when asked: generate at the model's highest native fps, then interpolate to 60 fps (a frame-interpolation model such as RIFE, or ffmpeg `minterpolate`), and verify with `ffprobe` that the file is 60 fps. Inspect fast motion for ghosting. Smooth 60 fps and an "on twos" held-drawing look conflict, since interpolation fills in the held frames. When the user asks for smooth 60 fps, animate character and camera motion fully and keep smears and impact frames as accents only. Say which one was chosen.
 
 ## Style block (put at the top of every shot prompt, unchanged)
 
