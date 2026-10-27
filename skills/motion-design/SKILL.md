@@ -14,6 +14,7 @@ For gallery adaptation, start from the closest example's complete original promp
 - **Prompt or review:** Inspect the chosen source through the gallery or supplied-video path above. Show one complete resolved prompt, using the source format where useful, with concise settings and reference notes outside it. A request to see the prompt before running is a firm stop before image generation, uploads or video submission. No tool call may submit a job merely to check access or cost.
 - **Images:** Create only requested or necessary references. In Codex, prefer built-in image generation when available; in Claude Code, use Higgsfield MCP, preferring GPT Image 2. Read [tool-routing.md](references/tool-routing.md) for capability checks and asset handoff. An image request does not commission video.
 - **Production:** Follow [production.md](references/production.md) through generation and inspection, within the user's authorization. Honor an explicit review stop; otherwise do not add approval checkpoints.
+- **Anime:** For hand-drawn or anime-style films, read [anime-cinematic.md](references/anime/anime-cinematic.md) and [character-sheet.md](references/anime/character-sheet.md). This is an original preset, not a gallery source example, and it generates per shot with a character sheet by design.
 - **Original concept:** Use [creative-brief.md](references/creative-brief.md). Offer a few relevant ideas when asked, then develop the selected one.
 
 ## Source-based templates
