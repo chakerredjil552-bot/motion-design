@@ -1,0 +1,26 @@
+// Shared timeline (seconds). shots.js reads window.TL; audio.py parses the same JSON body,
+// so every whip, hit and tick in the sound lands on the frame it belongs to.
+window.TL = {
+  "duration": 90,
+  "bpm": 120,
+  "hookClicks": [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5],
+  "hookAngles": [37, 251, 90, 200, 333, 120, 60],
+  "seedsFrom": 6.0,
+  "seedRate": 150,
+  "snaps": [[6.0, 90, "1/4", "4 ARMS"], [8.6, 120, "1/3", "3 ARMS"], [11.0, 144, "2/5", "5 ARMS"], [13.2, 137, "137/360", "GAPS"]],
+  "golden": 16.5,
+  "bloom": 17.0,
+  "dive": [18.5, 20.75],
+  "whips": [5.5, 21.0, 32.0, 44.0, 48.5, 53.0, 57.5, 62.0, 66.0, 71.0, 75.5],
+  "impacts": [16.5, 21.0, 25.0, 32.0, 44.0, 66.0, 86.0],
+  "name": { "split": [22.0, 23.4], "ratio": 23.6, "title": 25.0, "formula": 28.0, "collapse": [31.1, 31.7] },
+  "fib": { "arms21": [32.6, 34.1], "arms34": [34.5, 36.0], "ratio": 36.2, "sequence": [37.4, 38.9], "zoom": [38.9, 44.0] },
+  "nature": [[44.0, "SUNFLOWER", "34 · 55 SPIRALS"], [48.5, "PINE CONE", "8 · 13 SPIRALS"], [53.0, "SPIRAL ALOE", "5 SPIRALS"], [57.5, "ROMANESCO", "8 · 13 SPIRALS"], [62.0, "LEAVES", "EVERY LEAF GETS SUN"]],
+  "uses": [[66.0, "SOLAR FIELD", "MIRRORS ON A FERMAT SPIRAL"], [71.0, "FIBONACCI SPHERE", "EVEN POINTS ON A PLANET"], [75.5, "SUNFLOWER ARRAY", "ANTENNAS · FOCUSED BEAM"]],
+  "slams": [[44.0, 45.1, "PHYLLOTAXIS"], [66.0, 67.1, "WE COPIED IT"]],
+  "montage": [80.0, 82.0],
+  "montageFrom": [8.0, 15.0, 16.6, 19.8, 23.0, 26.0, 33.5, 35.5, 41.5, 46.5, 50.5, 55.5, 60.0, 63.5, 68.0, 73.0],
+  "rebirth": [82.0, 86.0],
+  "end": 86.0,
+  "fade": [88.6, 89.9]
+};

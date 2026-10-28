@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>137.5° — the golden angle</title>
+<style>
+  :root { --bg: #05060a; --fg: #cfe9ff; --dim: #5b6b85; --accent: #ffbe46; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 ui-monospace, Menlo, monospace; }
+  body { display: grid; place-items: center; }
+  #stage { width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; position: relative; }
+  canvas { width: 100%; height: 100%; display: block; background: #000; }
+  #bar { position: fixed; left: 16px; right: 16px; bottom: 14px; display: flex; gap: 12px; align-items: center; opacity: 0.85; }
+  #bar button { background: none; border: 1px solid var(--dim); color: var(--fg); border-radius: 4px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  #scrub { flex: 1; accent-color: var(--accent); }
+  body.render #bar { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="bar"><button id="play">play</button><input id="scrub" type="range" min="0" max="90" step="0.0166" value="0" /><span id="tc">00.00</span></div>
+<audio id="audio" src="golden_audio.m4a" preload="auto"></audio>
+<script src="timeline.js"></script>
+<script src="core.js"></script>
+<script src="shots.js"></script>
+<script>
+  const qs = new URLSearchParams(location.search);
+  const scale = +(qs.get('scale') || 1);
+  const canvas = document.getElementById('c');
+  const FILM = (window.FILM = {
+    ready: (async () => { await loadFonts(); initCanvases(canvas, scale); initShots(); })(),
+    // offline renderer hook: returns a JPEG data URL of frame t
+    frame(t, sub = 1, q = 0.95) { renderFrame(t, sub); return canvas.toDataURL('image/jpeg', q); },
+  });
+  if (qs.has('render')) document.body.classList.add('render');
+  else FILM.ready.then(() => {
+    const audio = document.getElementById('audio'), scrub = document.getElementById('scrub'), tc = document.getElementById('tc'), btn = document.getElementById('play');
+    let playing = false, t0 = 0, start = 0, t = +(qs.get('t') || 0);
+    const draw = () => { renderFrame(t); scrub.value = t; tc.textContent = t.toFixed(2).padStart(5, '0'); };
+    const loop = (now) => {
+      if (!playing) return;
+      t = audio.readyState >= 2 && !audio.paused ? audio.currentTime : t0 + (now - start) / 1000;
+      if (t >= DURATION) { playing = false; btn.textContent = 'play'; t = DURATION; }
+      draw(); requestAnimationFrame(loop);
+    };
+    btn.onclick = () => {
+      playing = !playing; btn.textContent = playing ? 'pause' : 'play';
+      if (playing) { if (t >= DURATION) t = 0; t0 = t; start = performance.now(); audio.currentTime = t; audio.play().catch(() => {}); requestAnimationFrame(loop); }
+      else audio.pause();
+    };
+    scrub.oninput = () => { t = +scrub.value; audio.currentTime = t; t0 = t; start = performance.now(); if (!playing) draw(); };
+    addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); btn.onclick(); } });
+    draw();
+  });
+</script>
+</body>
+</html>
