@@ -1,0 +1,5 @@
+node_modules/
+out/
+assets/music/*
+!assets/music/.gitkeep
+audio/work/
