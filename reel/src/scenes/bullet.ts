@@ -404,5 +404,8 @@ export const drawBullet = (ctx: Ctx, t: number, f: number) => {
   drawScene(ctx, t, true);
 };
 
+/** the scene without its title (grid panel replay) */
+export const drawBulletScene = (ctx: Ctx, t: number) => drawScene(ctx, t, false);
+
 /** home view of this scene, used when it is nested inside the speaker cone during the one-take */
 export const drawBulletHome = (ctx: Ctx, t: number) => drawScene(ctx, Math.min(t, M.contact - 0.001), false);
