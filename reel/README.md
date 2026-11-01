@@ -39,7 +39,10 @@ Inputs that are not in git:
   plus syncopated 16ths; the 65 BPM "triplet" reading and 196 BPM double-time were rejected
   (`audio/work/analysis.json` has the numbers).
 - **Drop**: song beat 17 = 10.425 s, after a 3-bar build with a natural one-beat dropout.
-- Excerpt: song 3.078 → 25.119 s. 1 beat = 73.469 frames; every event is rounded to the nearest frame.
+- The grid is aligned to the audible attacks: the fit locks onto the kick body, but every beat's transient starts
+  16.3 ms earlier (median over 16 kick beats), so beats sit 2 ms after the attack onset. Hits land on the
+  transient, and the hard cut stops the music 1 ms before the next downbeat's click.
+- Excerpt: song 3.064 → 25.105 s. 1 beat = 73.469 frames; every event is rounded to the nearest frame.
 - Bullet-time plays the song at ~0.5× (tape varispeed, pitched down an octave, darker) for 4 beats and snaps back
   at frame 2351 without skipping, so the hard cut lands right before the next downbeat (frame 2792).
 - `src/data/beats.json` (kick/snare/cowbell/hat/impact/slam events in master frames) and `src/data/envelope.json`
