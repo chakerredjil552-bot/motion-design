@@ -1,7 +1,7 @@
-// Scene 3 — the skill montage: eight worlds, one per 2 beats, hard cuts exactly on the beat frames with
-// aggressive, varied transitions (portal punch, whip pans, spin, glitch smash). Inside a shot the world holds and
-// reads with a slow push; the hit system adds an earthquake on every beat and an impact on every cut.
-import {CUTS, CUT_TYPES, CX, CY, CutType, E, M, P, TL, W, clamp, hits, lerp, spring} from '../lib/core';
+// Scene 3 — the skill montage: eight worlds, a bar each (two get half a bar). Every change lands on a beat and
+// the end of each world transforms into the start of the next (see worlds.ts); the hit system adds an
+// earthquake on every beat and an impact on every change.
+import {CUTS, CX, CY, E, M, P, TL, W, clamp, hits, lerp, spring} from '../lib/core';
 import {Ctx, FONT, fitSize, text} from '../lib/draw';
 import {advancesP, paintGlyph} from '../lib/glyphs';
 import {WORLDS, Z} from './worlds';
@@ -31,123 +31,33 @@ export const drawWorldNested = (ctx: Ctx, idx: number, t: number, depth: number)
   ctx.restore();
 };
 
-const NOUT = 10; // frames of outgoing move before the cut
-const NIN = 16; // frames of incoming settle after the cut
-
-/** which shot a frame belongs to (decided on the integer frame so a cut never blends across sub-frames) */
+/** which shot a frame belongs to (decided on the integer frame so a change never blends across sub-frames) */
 export const shotIndex = (f: number) => {
   let i = 0;
   for (let k = 0; k < WORLDS.length; k++) if (f >= CUTS[k]) i = k;
   return i;
 };
 
-type Cam = {s: number; rot: number; dx: number; dy: number; fx: number; fy: number};
-
-/** transition-only part of the camera (also applied to the title so it leaves with the move) */
-const transCam = (i: number, t: number): Cam => {
-  const w = WORLDS[i];
-  const start = CUTS[i];
-  const end = CUTS[i + 1];
-  const lt = t - start;
-  let s = 1;
-  let rot = 0;
-  let dx = 0;
-  let dy = 0;
-  let fx = lerp(CX, w.P[0], 0.5);
-  let fy = lerp(CY, w.P[1], 0.5);
-  // incoming settle
-  const q = clamp(lt / NIN);
-  if (q < 1) {
-    const type: CutType | 'blast' = i === 0 ? 'blast' : CUT_TYPES[i - 1];
-    const ob = 1 - E.outBack(q, 1.25);
-    switch (type) {
-      case 'blast':
-      case 'punch':
-        s *= 1 + 0.6 * (1 - E.outExpo(q));
-        break;
-      case 'whipL':
-        dx += 620 * ob;
-        rot += 0.05 * (1 - E.outCubic(q));
-        break;
-      case 'whipR':
-        dx -= 620 * ob;
-        rot -= 0.05 * (1 - E.outCubic(q));
-        break;
-      case 'whipU':
-        dy += 950 * ob;
-        break;
-      case 'spin':
-        rot -= 1.2 * ob;
-        s *= 1 + 0.9 * (1 - E.outExpo(q));
-        break;
-      case 'glitch':
-        s *= 1 + 0.25 * (1 - E.outExpo(q));
-        break;
-    }
-  }
-  // outgoing move into the next cut
-  const p = clamp((t - (end - NOUT)) / NOUT);
-  if (p > 0) {
-    switch (CUT_TYPES[i]) {
-      case 'punch': {
-        // slam through the portal: scale about the portal centre, which drifts to the frame centre
-        const k = E.inQuad(p);
-        fx = lerp(fx, w.P[0], k);
-        fy = lerp(fy, w.P[1], k);
-        s *= Math.pow(9, E.inExpo(p));
-        break;
-      }
-      case 'whipL':
-        dx -= 1300 * E.inQuart(p);
-        rot -= 0.06 * E.inQuad(p);
-        break;
-      case 'whipR':
-        dx += 1300 * E.inQuart(p);
-        rot += 0.06 * E.inQuad(p);
-        break;
-      case 'whipU':
-        dy -= 2000 * E.inQuart(p);
-        break;
-      case 'spin':
-        rot += 1.2 * E.inCubic(p);
-        s *= 1 + 0.9 * E.inCubic(p);
-        break;
-      case 'glitch':
-        s *= 1 + 0.08 * E.inQuad(p);
-        break;
-    }
-  }
-  return {s, rot, dx, dy, fx, fy};
-};
-
-const applyCam = (ctx: Ctx, c: Cam) => {
-  ctx.translate(c.fx + c.dx, c.fy + c.dy);
-  ctx.rotate(c.rot);
-  ctx.scale(c.s, c.s);
-  ctx.translate(-c.fx, -c.fy);
-};
-
 export const drawOneTake = (ctx: Ctx, t: number, f: number) => {
   const i = shotIndex(f);
-  // keep the shot's own clock inside its range (sub-frames never leak across the cut)
+  // keep the shot's own clock inside its range (sub-frames never leak across the change)
   const tt = clamp(t, CUTS[i], CUTS[i + 1] - 0.001);
   const w = WORLDS[i];
-  const tc = transCam(i, tt);
-  // slow push toward the action inside the shot
-  const push = 1 + 0.09 * E.inOutCubic(clamp((tt - CUTS[i]) / (CUTS[i + 1] - CUTS[i])));
+  const lt = tt - CUTS[i];
+  const D = CUTS[i + 1] - CUTS[i];
+  // a gentle push that is exactly 1.0 at both ends, so every transformation lands pixel-true
+  const push = 1 + 0.05 * Math.sin(Math.PI * clamp(lt / D));
+  const fx = lerp(CX, w.P[0], 0.5);
+  const fy = lerp(CY, w.P[1], 0.5);
   ctx.save();
-  applyCam(ctx, tc);
-  ctx.translate(tc.fx, tc.fy);
+  ctx.translate(fx, fy);
   ctx.scale(push, push);
-  ctx.translate(-tc.fx, -tc.fy);
+  ctx.translate(-fx, -fy);
   ctx.fillStyle = w.bg;
   ctx.fillRect(-3000, -3000, W + 6000, 1920 + 6000);
-  drawWorldNested(ctx, i, tt, 1);
+  drawWorldNested(ctx, i, tt, 0);
   ctx.restore();
-  ctx.save();
-  applyCam(ctx, tc);
   drawTitle(ctx, tt, f, i);
-  ctx.restore();
   if (t < M.drop + 30) drawShardBlast(ctx, t);
 };
 
@@ -220,7 +130,7 @@ export const drawSkillTitle = (
 const drawTitle = (ctx: Ctx, t: number, f: number, i: number) => {
   const w = WORLDS[i];
   const age = t - TL.portals[i];
-  const exitIn = 999; // montage titles leave with the transition move instead
+  const exitIn = TL.portals[i + 1] - t; // letters clear out before the transformation
   const h = hits(f);
   drawSkillTitle(ctx, w.title, `SKILL ${String(i + 1).padStart(2, '0')} / 09`, age, exitIn, h.bounce);
 };

@@ -3,19 +3,19 @@
 #
 #   ./render.sh            everything: audio -> test slice -> master (chunked) -> reels/30fps -> cover -> QA
 #   ./render.sh audio      rebuild the audio, beats.json and envelope only
-#   ./render.sh test       3 s test slice (frames 1940-2299: sound world -> bullet-time contact)
+#   ./render.sh test       3 s test slice (frames 2760-3119: 3D speaker -> the clash)
 #   ./render.sh master     chunked 120 fps master (resumes: finished chunks are kept)
 #   ./render.sh deliver    master mp4 + 60 fps Reels cut + 30 fps fallback from the stitched chunks
 #   ./render.sh cover      cover image
 #   ./render.sh qa         automated QA on the outputs
 #
-# Env: CONCURRENCY (default 4), CHUNK (frames per chunk, default 516), FORCE=1 re-renders all chunks.
+# Env: CONCURRENCY (default 4), CHUNK (frames per chunk, default 588), FORCE=1 re-renders all chunks.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 CONCURRENCY=${CONCURRENCY:-4}
-CHUNK=${CHUNK:-516}
-TOTAL=4116
+CHUNK=${CHUNK:-588}
+TOTAL=4704
 FPS=120
 OUT=out
 NAME=claude-code-reel
@@ -74,10 +74,10 @@ render_range() {
 }
 
 stage_test() {
-  log "test slice: 3 s (frames 1940-2299)"
+  log "test slice: 3 s (frames 2760-3119)"
   mkdir -p "$OUT/test"
-  render_range 1940 2299 "$OUT/test/slice.mov"
-  ffmpeg -v error -y -i "$OUT/test/slice.mov" -ss "$(python3 -c 'print(1940/120)')" -t 3 -i "$OUT/audio/mix.wav" \
+  render_range 2760 3119 "$OUT/test/slice.mov"
+  ffmpeg -v error -y -i "$OUT/test/slice.mov" -ss "$(python3 -c 'print(2760/120)')" -t 3 -i "$OUT/audio/mix.wav" \
     -map 0:v -map 1:a -c:v libx264 -crf 14 -preset medium -pix_fmt yuv420p -c:a aac -b:a 256k -ar 48000 -shortest \
     "$OUT/test/slice_120fps.mp4"
   ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate,nb_frames -of compact "$OUT/test/slice_120fps.mp4"

@@ -36,6 +36,8 @@ const camAt = (t: number): Cam => {
     yaw = lerp(0.85, 0, k);
     pitch = 0;
     zoom = lerp(1.14, 0.9, E.outExpo(clamp((t - M.snap) / 12)));
+    // crash zoom into the second clash
+    if (t >= M.relunge) zoom = lerp(0.9, 1.35, E.inCubic(clamp((t - M.relunge) / (M.hardcut - M.relunge))));
   }
   return {yaw, pitch, zoom};
 };
@@ -83,11 +85,18 @@ const fighterState = (t: number, side: -1 | 1) => {
     const ts = t - M.snap;
     const k = E.outCubic(clamp(ts / 9));
     pose = lerpPose(POSE_PUNCH, POSE_RECOIL, k);
-    // thrown back but they stay in frame
-    // thrown back a step, then they hold in recoil (stay framed for the cut to the grid)
+    // thrown back a step...
     off = (M.snap - M.contact) * SLOW * 2.5 + E.outExpo(clamp(ts / 22)) * 120;
     rot = -0.3 * E.outBack(clamp(ts / 20), 2);
     lift = -E.outCubic(clamp(ts / 30)) * 50;
+    // ...then both lunge again on the fill: the hard cut lands one frame before the second impact
+    if (t >= M.relunge) {
+      const lk = E.inCubic(clamp((t - M.relunge) / (M.hardcut - M.relunge)));
+      pose = lerpPose(POSE_RECOIL, POSE_PUNCH, E.outBack(clamp((t - M.relunge) / 22), 1.6));
+      off = lerp(off, 30, lk);
+      rot = lerp(rot, 0, lk);
+      lift = lerp(lift, 0, lk);
+    }
   }
   if (side === 1) pose = mirror(pose);
   return {pose, off: off * side, rot: rot * side, lift};
@@ -376,7 +385,7 @@ const drawScene = (ctx: Ctx, t: number, withTitle: boolean) => {
   drawDebris(ctx, cam, t, false);
   const ip = project(cam, IMPACT.x, IMPACT.y, IMPACT.z);
   const frozen = t >= M.contact && t < M.snap;
-  speedLines(ctx, ip.x, ip.y, t, frozen ? 1 : t >= M.snap ? clamp(1 - (t - M.snap) / 20) : 0);
+  speedLines(ctx, ip.x, ip.y, t, frozen ? 1 : t >= M.relunge ? clamp((t - M.relunge) / 20) : t >= M.snap ? clamp(1 - (t - M.snap) / 20) : 0);
   // draw the farther fighter first (depends on orbit)
   const order: (-1 | 1)[] = Math.sin(cam.yaw) > 0 ? [1, -1] : [-1, 1];
   const after = t - M.snap;

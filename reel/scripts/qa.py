@@ -135,11 +135,11 @@ def audio_checks(path):
     check("audio: delivered AAC sample-aligned with the mix", abs(lag) <= 48, f"lag {lag} samples ({lag / SR * 1000:.2f} ms)")
     # the freeze beat (video beat 11 -> 12, frames 808-881) is digital silence in the mix
     s0, s1 = int(11 * B_S * SR), int((12 * B_S - 0.006) * SR)
-    check("audio: freeze beat 808-881 is digital silence (mix)", np.abs(ref[s0:s1]).max() < 1e-6, f"max {np.abs(ref[s0:s1]).max():.2e}")
+    check(f"audio: freeze beat {M['freeze']}-{M['drop'] - 1} is digital silence (mix)", np.abs(ref[s0:s1]).max() < 1e-6, f"max {np.abs(ref[s0:s1]).max():.2e}")
     enc_rms = 20 * np.log10(np.sqrt(np.mean(enc[s0 + 150:s1 - int(0.025 * SR)] ** 2)) + 1e-12)
     check("audio: freeze beat in the AAC is below -50 dBFS (codec noise only)", enc_rms < -50, f"{enc_rms:.1f} dBFS RMS")
     # event landings: drop attack, bullet-time snap, contact (high-frequency onset)
-    for name, fr in (("drop attack", M["drop"]), ("bullet-time contact", M["contact"]), ("bullet-time snap hit", M["snap"])):
+    for name, fr in (("drop attack", M["drop"]), ("bullet-time contact", M["contact"]), ("bullet-time snap hit", M["snap"])):  # noqa
         o_ref = hf_onset(ref, fr)
         o_enc = hf_onset(enc, fr)
         check(f"audio: {name} lands on frame {fr} (±1)", abs(o_ref - fr) <= 1 and abs(o_enc - fr) <= 1,
@@ -148,9 +148,9 @@ def audio_checks(path):
     seg = np.abs(ref[int((M["hardcut"] - 60) / FPS * SR):int(M["closing"] / FPS * SR)])
     nz = np.nonzero(seg > 1e-3)[0]
     cut_frame = (nz[-1] + int((M["hardcut"] - 60) / FPS * SR)) / SR * FPS if len(nz) else -1
-    check("audio: music stops dead on frame 2792 (±1)", abs(cut_frame - M["hardcut"]) <= 1.0, f"last sample > -60 dBFS at frame {cut_frame:.2f}")
+    check(f"audio: music stops dead on frame {M['hardcut']} (±1)", abs(cut_frame - M["hardcut"]) <= 1.0, f"last sample > -60 dBFS at frame {cut_frame:.2f}")
     h0, h1 = int(M["hardcut"] / FPS * SR) + 1, int(M["closing"] / FPS * SR)
-    check("audio: hard cut 2792-2938 is digital silence (mix)", np.abs(ref[h0:h1]).max() == 0.0, f"max {np.abs(ref[h0:h1]).max():.2e}")
+    check(f"audio: hard cut {M['hardcut']}-{M['closing'] - 1} is digital silence (mix)", np.abs(ref[h0:h1]).max() == 0.0, f"max {np.abs(ref[h0:h1]).max():.2e}")
     hc = np.abs(enc[h0 + 300:h1 - 200])
     check("audio: hard cut silent in the AAC", hc.max() < 2e-3, f"max {hc.max():.5f}")
 
@@ -160,9 +160,10 @@ def stills(path):
     os.makedirs(d, exist_ok=True)
     for f in os.listdir(d):
         os.remove(os.path.join(d, f))
-    frames = sorted(set([0, 72, 73, 220, 294, 367, 441, 588, 807, 808, 881, 882, 883, 2056, 2057, 2350, 2351, 2352,
-                         2424, 2755, 2791, 2792, 2939, 3233, 3380, 3453, 3527, 3600, 3747, 4041, 4115]
-                        + [p + o for p in TL["portals"] for o in (-1, 0, 1)] + TL["panels"]))
+    keys = ["teaserEnd", "reply", "warning", "ignoring", "crack", "burst", "freeze", "drop", "contact", "snap",
+            "relunge", "hardcut", "closing", "typeEnd", "punch", "hold", "glance", "bubble", "tag", "outro"]
+    frames = sorted(set([0, TOTAL - 1] + [M[k] for k in keys] + [M[k] - 1 for k in ("drop", "snap", "hardcut")]
+                        + [p + o for p in TL["portals"] for o in (-12, 0)]))
     for f in frames:
         t = (f - 0.25) / FPS
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.5f}", "-i", path, "-frames:v", "1",
@@ -188,7 +189,7 @@ def main():
         bad = [iv for iv in bl if not within(iv, black_ok)]
         hc_found = any(s <= M["hardcut"] / FPS + 2 / FPS and (e or 99) >= M["closing"] / FPS - 2 / FPS for s, e in bl)
         check("blackdetect: black only in the hard cut / closing terminal", not bad, f"black {[(round(a, 3), round(b, 3) if b else None) for a, b in bl]}")
-        check("blackdetect: hard cut 2792-2938 is black", hc_found)
+        check(f"blackdetect: hard cut {M['hardcut']}-{M['closing'] - 1} is black", hc_found)
         # only intentional freezes: hard cut, the awkward hold, frozen held frames of the closing/punchline
         freeze_ok = [(M["hardcut"] / FPS, M["closing"] / FPS + 0.2), (M["hold"] / FPS - 0.3, M["glance"] / FPS + 0.1),
                      (M["typeEnd"] / FPS, M["punch"] / FPS + 0.05), (M["bubble"] / FPS, M["outro"] / FPS + 0.05)]
@@ -197,11 +198,11 @@ def main():
         check("freezedetect: only intentional holds", not badf, f"freezes {[(round(a, 3), round(b, 3) if b else None) for a, b in fr]}")
         # picture: drop flash, snap impact frame, hard cut to black
         l881, l882 = frame_luma(MASTER, M["drop"] - 1, FPS), frame_luma(MASTER, M["drop"], FPS)
-        check("picture: drop flash on frame 882", l882 - l881 > 40, f"luma {l881:.0f} -> {l882:.0f}")
-        l2791, l2792 = frame_luma(MASTER, M["hardcut"] - 1, FPS), frame_luma(MASTER, M["hardcut"], FPS)
-        check("picture: white-out 2791 -> black 2792", l2791 > 180 and l2792 < 4, f"luma {l2791:.0f} -> {l2792:.0f}")
+        check(f"picture: drop flash on frame {M['drop']}", l882 - l881 > 40, f"luma {l881:.0f} -> {l882:.0f}")
+        lb, lh = frame_luma(MASTER, M["hardcut"] - 1, FPS), frame_luma(MASTER, M["hardcut"], FPS)
+        check(f"picture: hard cut to black on frame {M['hardcut']}", lb > 15 and lh < 4, f"luma {lb:.0f} -> {lh:.0f}")
         l2350, l2351 = frame_luma(MASTER, M["snap"] - 1, FPS), frame_luma(MASTER, M["snap"], FPS)
-        check("picture: impact frame on 2351", l2351 - l2350 > 40, f"luma {l2350:.0f} -> {l2351:.0f}")
+        check(f"picture: impact frame on {M['snap']}", l2351 - l2350 > 40, f"luma {l2350:.0f} -> {l2351:.0f}")
         audio_checks(MASTER)
         stills(MASTER)
     failed = [r for r in results if not r[1]]

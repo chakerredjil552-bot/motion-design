@@ -12,18 +12,18 @@ FPS = 120
 SR = 48000                     # output sample rate (AAC 48 kHz)
 SAMPLES_PER_FRAME = SR // FPS  # 400
 
-TOTAL_BEATS = 56               # 14 bars of 4/4
+TOTAL_BEATS = 64               # 16 bars of 4/4
 # Frame count rounded up to a multiple of 4 so 60 fps (pairs) and 30 fps (quads) blends are exact.
-TOTAL_FRAMES = 4116
+TOTAL_FRAMES = 4704
 
 # Song structure (song beats, counted on the fitted grid). Filled by analyze.py into analysis.json.
 SONG_START_BEAT = 5            # build starts here (bar line)
 SONG_DROP_BEAT = 17            # the drop (bar line)
 PRE_DROP_BEATS = 12            # video beats before the drop
-SLOW_START_V = 28              # bullet-time contact (video beat)
-SLOW_END_V = 32                # snap back (video beat)
+SLOW_START_V = 40              # bullet-time contact (video beat)
+SLOW_END_V = 44                # snap back (video beat)
 SLOW_SONG_BEATS = 2.0          # song beats consumed during slow-mo (=> ~0.5x)
-MUSIC_END_V = 38               # hard cut (video beat)
+MUSIC_END_V = 46               # hard cut (video beat)
 MUTE_V = (11, 12)              # one beat of true silence before the drop
 
 

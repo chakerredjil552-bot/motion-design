@@ -7,7 +7,6 @@ import {drawClosing, drawTerminal} from './scenes/terminal';
 import {drawShatter} from './scenes/shatter';
 import {drawOneTake} from './scenes/onetake';
 import {drawBullet, drawImpactFrame, isImpactFrame} from './scenes/bullet';
-import {drawGrid} from './scenes/grid';
 import {drawPunch, punchPost} from './scenes/punch';
 
 type Spec = {
@@ -43,14 +42,12 @@ export const specFor = (f: number): Spec => {
   if (f < S.onetake[1]) {
     // heavy motion blur through the transitions (whips/spins/punches smear for real)
     const nearCut = TL.portals.some((c) => f >= c - 12 && f < c + 16);
-    const atCut = TL.portals.some((c) => f >= c - 6 && f < c + 4);
-    return {draw: drawOneTake, samples: atCut ? 8 : nearCut ? 4 : 3, shutter: nearCut ? 1 : 0.7, hit: 1, bloom: 0.32, leak: 0.45, grain: 0.07, vignette: 0.45};
+    return {draw: drawOneTake, samples: nearCut ? 4 : 3, shutter: nearCut ? 0.8 : 0.7, hit: 1, bloom: 0.32, leak: 0.45, grain: 0.07, vignette: 0.45};
   }
   if (f < S.bullet[1]) {
     const fast = f < M.contact + 6 || f >= M.snap;
     return {draw: drawBullet, samples: fast ? 4 : 2, shutter: fast ? 0.9 : 0.5, hit: 1, bloom: 0.55, leak: 0.25, grain: 0.07, vignette: 0.5};
   }
-  if (f < S.grid[1]) return {draw: drawGrid, samples: 3, shutter: 0.7, hit: 1, bloom: 0.35, leak: 0.1, grain: 0.06, vignette: 0.3};
   if (f < S.hardcut[1]) return {draw: black, samples: 2, shutter: 0.5, hit: 0, bloom: 0, leak: 0, grain: 0, vignette: 0};
   if (f < S.closing[1]) return {draw: drawClosing, samples: 2, shutter: 0.5, hit: 0, bloom: 0.3, leak: 0, grain: 0.07, vignette: 0.55, scan: 0.08};
   return {draw: drawPunch, samples: 2, shutter: 0.6, hit: 0, bloom: 0.35, leak: 0.1, grain: 0.07, vignette: 0.45};

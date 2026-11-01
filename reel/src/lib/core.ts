@@ -144,7 +144,7 @@ export type Hits = {
 // ------------------------------------------------------------------------------------------ cuts + earthquake
 /** one-take cuts land on these beat frames; CUT_TYPES[i] is the transition out of shot i */
 export const CUTS = TL.portals;
-export const CUT_TYPES = ['punch', 'whipL', 'spin', 'glitch', 'whipU', 'punch', 'whipR', 'punch'] as const;
+export const CUT_TYPES = ['morph', 'morph', 'morph', 'morph', 'morph', 'morph', 'morph', 'morph'] as const;
 export type CutType = (typeof CUT_TYPES)[number];
 
 /** earthquake amplitude (px) for the beat at video-beat v, by section; 0 where the edit should breathe */
@@ -153,7 +153,7 @@ const quakeAmp = (v: number, bf: number) => {
   if (bf < M.crack) return v >= 3 ? 7 : 0; // filtered intro: a pulse
   if (bf < M.freeze) return 16 + 5 * (v - 6); // shatter build: grows into the freeze
   if (bf < M.drop) return 0; // the silent freeze
-  if (bf < M.contact) return down ? 80 : 48; // one-take
+  if (bf < M.contact) return down ? 70 : 40; // montage (lighter so every scene stays readable)
   if (bf < M.snap) return 0; // bullet-time float
   if (bf < M.hardcut) return down ? 84 : 52; // snap aftermath + skill grid
   return 0;
@@ -217,7 +217,7 @@ export const hits = (f: number, intensity = 1): Hits => {
     shakeR += qr;
     const age = fi - bf;
     punch += (down ? 0.075 : 0.042) * Math.max(0, ring(age, 7, 0.05)) * Math.min(1, A / 48);
-    ca += (down ? 12 : 6) * Math.exp(-age / 5) * Math.min(1, A / 48);
+    ca += (down ? 8 : 4) * Math.exp(-age / 5) * Math.min(1, A / 48);
   }
 
   // one-take cut impacts: flash frame, CA spike, extra quake, glitch smash for glitch cuts
@@ -226,15 +226,15 @@ export const hits = (f: number, intensity = 1): Hits => {
     if (age < -6 || age > 40) continue;
     const type = CUT_TYPES[c - 1];
     if (age >= 0) {
-      if (age < 2) flash = Math.max(flash, type === 'punch' ? 0.7 : type === 'spin' || type === 'glitch' ? 0.3 : 0);
-      ca += 34 * Math.exp(-age / 6);
+      if (age < 2) flash = Math.max(flash, 0.12);
+      ca += 8 * Math.exp(-age / 6); // morph changes: a light accent, the transformation carries the cut
       punch += 0.06 * Math.max(0, ring(age, 9, 0.04));
-      const [qx, qy, qr] = quake(age, 70, CUTS[c], true);
+      const [qx, qy, qr] = quake(age, 55, CUTS[c], true);
       shakeX += qx;
       shakeY += qy;
       shakeR += qr;
     }
-    if (type === 'glitch' && age >= -5 && age < 6) {
+    if ((type as string) === 'glitch' && age >= -5 && age < 6) {
       glitch = Math.max(glitch, 1 - Math.abs(age + 0.5) / 7);
       glitchSeed = CUTS[c] * 13 + fi;
     }

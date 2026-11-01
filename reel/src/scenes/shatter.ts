@@ -105,7 +105,7 @@ const worldTex = (i: number) => {
     x.scale(0.5, 0.5);
     x.fillStyle = '#000';
     x.fillRect(0, 0, W, H);
-    drawWorldNested(x, i, TL.portals[i] + 30, 1);
+    drawWorldNested(x, i, TL.portals[i] + 60, 0);
     x.restore();
     (c as any)._ok = true;
   }
@@ -116,6 +116,10 @@ const worldTex = (i: number) => {
 /** shard world-time: real time until the freeze, crawling during it */
 const shardTime = (t: number) => (t < M.freeze ? t : M.freeze + (t - M.freeze) * 0.03);
 
+const norm3 = (v: [number, number, number]): [number, number, number] => {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
+};
 const rot3 = (x: number, y: number, ax: [number, number], ang: number): [number, number, number] => {
   // Rodrigues rotation of (x, y, 0) around the in-plane unit axis (ax, ay, 0)
   const [ux, uy] = ax;
@@ -127,8 +131,15 @@ const rot3 = (x: number, y: number, ax: [number, number], ang: number): [number,
   return [x * c + ux * dot * (1 - c), y * c + uy * dot * (1 - c), cz * s];
 };
 
-type Proj = {pts: [number, number][]; facing: number; depth: number; visible: boolean};
-const projectShard = (s: Shard, t: number, blast: number): Proj => {
+type Proj = {pts: [number, number][]; facing: number; depth: number; visible: boolean; n: [number, number, number]};
+
+/** camera orbit through the frozen shards (yaw about the vertical axis through the impact) */
+const camYaw = (t: number) => {
+  if (t < M.freeze) return 0.05 * E.inOutCubic(clamp((t - M.burst) / (M.freeze - M.burst)));
+  return 0.05 + 0.42 * E.inOutCubic(clamp((t - M.freeze) / (M.drop - M.freeze)));
+};
+
+const projectShard = (s: Shard, t: number, blast: number, yaw = camYaw(Math.min(t, M.drop - 0.001))): Proj => {
   const st = shardTime(t);
   const tau = Math.max(0, st - s.launch);
   let px = s.cx;
@@ -142,17 +153,28 @@ const projectShard = (s: Shard, t: number, blast: number): Proj => {
     pz = s.vz * tb + s.az * tb * tb - blast * blast * 1.6;
     ang = s.spin * tb * (1 + blast * 0.05);
   }
-  const depth = FOC + pz;
-  if (depth < 120) return {pts: [], facing: 1, depth, visible: false};
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
   const out: [number, number][] = [];
-  // facing = z of the normal (0,0,1) rotated about an in-plane axis
-  const nz = ang !== 0 ? Math.cos(ang) : 1;
+  let dsum = 0;
   for (const [x, y] of s.pts) {
     const [rx, ry, rz] = ang !== 0 ? rot3(x - s.cx, y - s.cy, s.axis, ang) : [x - s.cx, y - s.cy, 0];
-    const kk = FOC / Math.max(60, depth + rz);
-    out.push([W / 2 + (px + rx - W / 2) * kk, H / 2 + (py + ry - H / 2) * kk]);
+    // world point, then the orbiting camera
+    const wx = px + rx - I.x;
+    const wz = pz + rz;
+    const cx = wx * cy - wz * sy + I.x;
+    const cz = wx * sy + wz * cy;
+    const depth = FOC + cz;
+    if (depth < 120) return {pts: [], facing: 1, depth, visible: false, n: [0, 0, 1]};
+    dsum += depth;
+    const kk = FOC / Math.max(60, depth);
+    out.push([W / 2 + (cx - W / 2) * kk, H / 2 + (py + ry - H / 2) * kk]);
   }
-  return {pts: out, facing: nz, depth, visible: true};
+  // normal = (0,0,1) rotated about the in-plane axis, then the camera yaw
+  const [ux, uy] = s.axis;
+  const n0: [number, number, number] = ang !== 0 ? [uy * Math.sin(ang), -ux * Math.sin(ang), Math.cos(ang)] : [0, 0, 1];
+  const n: [number, number, number] = [n0[0] * cy - n0[2] * sy, n0[1], n0[0] * sy + n0[2] * cy];
+  return {pts: out, facing: n[2], depth: dsum / 3, visible: true, n};
 };
 
 /** draw the source triangle of `tex` (scaled by texScale) onto the destination triangle */
@@ -255,7 +277,8 @@ const drawCracks = (ctx: Ctx, t: number) => {
 // ------------------------------------------------------------------------------------------ draw
 const drawShards = (ctx: Ctx, t: number, blast: number) => {
   const tex = termTex();
-  const list = SHARDS.map((s) => ({s, p: projectShard(s, t, blast)})).filter((o) => o.p.visible);
+  const yaw = blast > 0 ? 0 : camYaw(Math.min(t, M.drop - 0.001));
+  const list = SHARDS.map((s) => ({s, p: projectShard(s, t, blast, yaw)})).filter((o) => o.p.visible);
   // far to near
   list.sort((a, b) => b.p.depth - a.p.depth);
   const cracked = t >= M.crack;
@@ -272,7 +295,13 @@ const drawShards = (ctx: Ctx, t: number, blast: number) => {
     } else {
       texTri(ctx, worldTex(WORLDS.length > s.world ? s.world : 0), s.pts, dst, 0.5);
     }
-    // glass shading + edge glint
+    // glass lighting: two-sided diffuse, a specular glint sweeping with the light, bright bevel when edge-on
+    const sweep = clamp((t - M.burst) / (M.drop - M.burst));
+    const L = norm3([-0.5 + 1.1 * sweep, -0.7, 0.55]);
+    const nn = p.facing >= 0 ? p.n : ([-p.n[0], -p.n[1], -p.n[2]] as [number, number, number]);
+    const diff = Math.max(0, nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2]);
+    const Hh = norm3([L[0], L[1], L[2] + 1]);
+    const spec = 1.15 * Math.pow(Math.max(0, nn[0] * Hh[0] + nn[1] * Hh[1] + nn[2] * Hh[2]), 14);
     const shade = Math.abs(p.facing);
     ctx.save();
     ctx.beginPath();
@@ -281,13 +310,27 @@ const drawShards = (ctx: Ctx, t: number, blast: number) => {
     ctx.lineTo(dst[2][0], dst[2][1]);
     ctx.closePath();
     if (flown) {
-      ctx.fillStyle = withA(p.facing >= 0 ? '#9FE9F0' : '#FFD9C7', 0.08 + 0.18 * (1 - shade));
+      ctx.fillStyle = withA(p.facing >= 0 ? '#9FE9F0' : '#FFD9C7', 0.06 + 0.16 * (1 - shade));
       ctx.fill();
+      ctx.fillStyle = `rgba(0,0,0,${0.42 * (1 - diff)})`;
+      ctx.fill();
+      if (spec > 0.02) {
+        const gx0 = Math.min(dst[0][0], dst[1][0], dst[2][0]);
+        const gx1 = Math.max(dst[0][0], dst[1][0], dst[2][0]);
+        const gy0 = Math.min(dst[0][1], dst[1][1], dst[2][1]);
+        const gy1 = Math.max(dst[0][1], dst[1][1], dst[2][1]);
+        const g = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(0.5, `rgba(255,255,255,${Math.min(0.95, spec)})`);
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
     }
     // fracture edges appear as the crack front passes them
     const front = E.outExpo(clamp((t - M.crack - s.dist / 45) / 18));
-    ctx.lineWidth = flown ? 2.5 : 1.2;
-    ctx.strokeStyle = withA(P.cream, flown ? 0.55 + 0.4 * (1 - shade) : 0.22 * front);
+    ctx.lineWidth = flown ? 2 + 5 * (1 - shade) : 1.2;
+    ctx.strokeStyle = flown ? withA(spec > 0.3 ? '#FFFFFF' : '#CFFBFF', 0.5 + 0.45 * (1 - shade) + 0.3 * spec) : withA(P.cream, 0.22 * front);
     ctx.stroke();
     ctx.restore();
   }
@@ -296,7 +339,7 @@ const drawShards = (ctx: Ctx, t: number, blast: number) => {
 export const drawShatter = (ctx: Ctx, t: number, f: number) => {
   // behind the glass: the first world, waiting
   ctx.save();
-  drawWorldNested(ctx, 0, Math.min(t, M.drop - 1), 2);
+  drawWorldNested(ctx, 0, Math.min(t, M.drop - 1), 0);
   ctx.restore();
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fillRect(0, 0, W, H);

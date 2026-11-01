@@ -105,29 +105,30 @@ def typing(text, start, end, seed, spread=0.35):
 def build_timeline():
     beats = [vf(v) for v in range(TOTAL_BEATS + 1)]
     beats[-1] = TOTAL_FRAMES
-    portals_v = list(range(12, 29, 2))
-    panels_v = [33, 34, 35, 35.5, 36, 36.5, 36.75, 37, 37.25]
+    # montage: one world per bar (4 beats), the two quick ones get half a bar; every change lands on a beat
+    portals_v = [12, 14, 18, 22, 26, 30, 32, 36, SLOW_START_V]
     m = {
         "teaserEnd": vf(1), "prompt": vf(1), "reply": vf(3), "warning": vf(4), "ignoring": vf(5),
         "crack": vf(6), "crack2": vf(7), "burst": vf(8), "freeze": vf(11), "drop": vf(12),
-        "contact": vf(SLOW_START_V), "snap": vf(SLOW_END_V), "bulletEnd": vf(33),
-        "whiteout": vf(37.5), "hardcut": vf(MUSIC_END_V), "closing": vf(40), "typeStart": vf(40.25),
-        "typeEnd": vf(44), "punch": vf(46), "hold": vf(47), "glance": vf(48), "bubble": vf(49),
-        "tag": vf(51), "outro": vf(55),
+        "contact": vf(SLOW_START_V), "snap": vf(SLOW_END_V), "relunge": vf(SLOW_END_V + 1),
+        "hardcut": vf(MUSIC_END_V), "closing": vf(MUSIC_END_V + 2), "typeStart": vf(MUSIC_END_V + 2.25),
+        "typeEnd": vf(MUSIC_END_V + 6), "punch": vf(MUSIC_END_V + 8), "hold": vf(MUSIC_END_V + 9),
+        "glance": vf(MUSIC_END_V + 10), "bubble": vf(MUSIC_END_V + 11), "tag": vf(MUSIC_END_V + 13),
+        "outro": vf(TOTAL_BEATS - 1),
     }
     tl = {
         "fps": FPS, "totalFrames": TOTAL_FRAMES, "bpm": BPM, "framesPerBeat": FPB,
         "beats": beats,
         "scenes": {
             "terminal": [0, m["crack"]], "shatter": [m["crack"], m["drop"]],
-            "onetake": [m["drop"], m["contact"]], "bullet": [m["contact"], m["bulletEnd"]],
-            "grid": [m["bulletEnd"], m["hardcut"]], "hardcut": [m["hardcut"], m["closing"]],
+            "onetake": [m["drop"], m["contact"]], "bullet": [m["contact"], m["hardcut"]],
+            "hardcut": [m["hardcut"], m["closing"]],
             "closing": [m["closing"], m["punch"]], "punch": [m["punch"], TOTAL_FRAMES],
         },
         "marks": m,
         "portalBeats": portals_v,
         "portals": [vf(v) for v in portals_v],
-        "panels": [vf(v) for v in panels_v],
+        "panels": [],
         "hudEnd": m["hardcut"],
         "slow": {"startV": SLOW_START_V, "endV": SLOW_END_V, "songBeats": SLOW_SONG_BEATS, "rampW": RAMP_W},
         "typing": {
@@ -396,11 +397,10 @@ def build_sfx(tl):
     sw = sfx_reverse_swell(np.random.default_rng(10), 0.55)
     place(bus, sw, ft(m["snap"]) - 0.55, gain=0.35)
     place(bus, sfx_impact(np.random.default_rng(11), 1.0), ft(m["snap"]), gain=0.85)
-    # grid slams, accelerating, rising pitch
-    for i, pf in enumerate(tl["panels"]):
-        place(bus, sfx_slap(np.random.default_rng(80 + i), 1 + 0.07 * i), ft(pf), pan=((i % 3) - 1) * 0.4, gain=0.3)
-    wo = sfx_riser(np.random.default_rng(12), ft(m["hardcut"] - m["whiteout"]), 2000, 12000)
-    place(bus, wo, ft(m["whiteout"]), gain=0.28)
+    # second lunge after the snap, sucked into the hard cut
+    place(bus, sfx_whoosh(np.random.default_rng(12), 0.5, 700, 6000), ft(m["relunge"]), gain=0.3)
+    sw2 = sfx_reverse_swell(np.random.default_rng(17), ft(m["hardcut"] - m["relunge"]))
+    place(bus, sw2, ft(m["relunge"]), gain=0.3)
     # freeze: one beat of true silence (the shatter tails are cut too)
     a = int(MUTE_V[0] * B * SR)
     b = int((MUTE_V[1] * B - 0.006) * SR)
@@ -583,7 +583,7 @@ def main():
         events[name] = lst
     m = tl["marks"]
     events["impact"] = [{"f": m["drop"], "s": 1.0}, {"f": m["contact"], "s": 0.8}, {"f": m["snap"], "s": 1.0}]
-    events["slam"] = [{"f": f, "s": round(0.55 + 0.05 * i, 2)} for i, f in enumerate(tl["panels"])]
+    events["slam"] = []
     beats = {
         "fps": FPS, "bpm": BPM, "framesPerBeat": FPB, "totalFrames": TOTAL_FRAMES,
         "song": {"offsetS": OFF, "startBeat": SONG_START_BEAT, "dropBeat": SONG_DROP_BEAT,
