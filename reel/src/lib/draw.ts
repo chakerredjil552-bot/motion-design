@@ -1,5 +1,6 @@
 // Canvas helpers: offscreen pool, type, shapes, halftone, grain, rim-lit silhouettes.
 import {H, P, TAU, W, clamp, noise1, rnd} from './core';
+import {GlyphPaint, capHeight, paintText, textWidthP} from './glyphs';
 
 export type Ctx = CanvasRenderingContext2D;
 
@@ -28,34 +29,39 @@ export const font = (ctx: Ctx, size: number, family = FONT.display, weight = 400
   ctx.font = `${weight} ${size}px "${family}"`;
 };
 
-/** text with tracking, alignment and an optional synthetic oblique */
+/** text with tracking, alignment, optional outline and synthetic oblique — rendered as glyph paths */
 export const text = (
   ctx: Ctx,
   s: string,
   x: number,
   y: number,
-  o: {size: number; family?: string; weight?: number; color?: string; align?: CanvasTextAlign; track?: number; skew?: number; base?: CanvasTextBaseline} ,
+  o: {
+    size: number;
+    family?: string;
+    weight?: number;
+    color?: string;
+    align?: CanvasTextAlign;
+    track?: number;
+    skew?: number;
+    base?: 'alphabetic' | 'middle';
+    stroke?: string;
+    lineWidth?: number;
+    strokeOnly?: boolean;
+  },
 ) => {
+  const family = o.family ?? FONT.display;
+  const weight = o.weight ?? 400;
   ctx.save();
-  font(ctx, o.size, o.family ?? FONT.display, o.weight ?? 400);
-  ctx.textAlign = o.align ?? 'center';
-  ctx.textBaseline = o.base ?? 'alphabetic';
-  (ctx as any).letterSpacing = `${o.track ?? 0}px`;
-  ctx.fillStyle = o.color ?? P.cream;
-  ctx.translate(x, y);
+  ctx.translate(x, y + (o.base === 'middle' ? (o.size * capHeight(family)) / 2 : 0));
   if (o.skew) ctx.transform(1, 0, o.skew, 1, 0, 0);
-  ctx.fillText(s, 0, 0);
-  ctx.restore();
-};
-
-export const measure = (ctx: Ctx, s: string, size: number, family = FONT.display, weight = 400, track = 0) => {
-  ctx.save();
-  font(ctx, size, family, weight);
-  (ctx as any).letterSpacing = `${track}px`;
-  const w = ctx.measureText(s).width;
+  const paint: GlyphPaint = {fill: o.strokeOnly ? undefined : o.color ?? P.cream, stroke: o.stroke, lineWidth: o.lineWidth};
+  const w = paintText(ctx, s, 0, 0, o.size, family, weight, paint, o.align ?? 'center', o.track ?? 0);
   ctx.restore();
   return w;
 };
+
+export const measure = (_ctx: Ctx, s: string, size: number, family = FONT.display, weight = 400, track = 0) =>
+  textWidthP(s, size, family, weight, track);
 
 /** fit font size so text spans maxW */
 export const fitSize = (ctx: Ctx, s: string, maxW: number, maxSize: number, family = FONT.display, track = 0) => {

@@ -1,6 +1,7 @@
 // Local-only assets (no network at render time): bundled fonts + the user's logo if present.
 import {staticFile} from 'remotion';
 import logoManifest from '../data/logo.json';
+import {loadGlyphFonts} from './glyphs';
 
 const FONTS: [string, string, string][] = [
   ['Anton', 'fonts/Anton.woff2', '400'],
@@ -31,6 +32,7 @@ export const loadAssets = () => {
         (document.fonts as any).add(ff);
       }),
     );
+    await loadGlyphFonts();
     const man = logoManifest as {file: string | null; pixelArt: boolean};
     if (man.file) {
       const img = new Image();

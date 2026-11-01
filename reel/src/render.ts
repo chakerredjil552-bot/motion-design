@@ -2,11 +2,11 @@
 // then run the post stack and the HUD. Pure function of the frame number.
 import {H, M, P, TL, TOTAL, W, hits} from './lib/core';
 import {Ctx, FONT, ctxOf, off, text, withA} from './lib/draw';
-import {bloom, camera, chromatic, flash, glitch, grain, invert, lightLeak, scanlines, vignette} from './lib/post';
+import {bloom, camera, chromatic, flash, glitch, grain, lightLeak, scanlines, vignette} from './lib/post';
 import {drawClosing, drawTerminal} from './scenes/terminal';
 import {drawShatter} from './scenes/shatter';
 import {drawOneTake} from './scenes/onetake';
-import {drawBullet, isImpactFrame} from './scenes/bullet';
+import {drawBullet, drawImpactFrame, isImpactFrame} from './scenes/bullet';
 import {drawGrid} from './scenes/grid';
 import {drawPunch, punchPost} from './scenes/punch';
 
@@ -31,8 +31,7 @@ const black: Spec['draw'] = (ctx) => {
 
 /** frame 0..72: the inverted impact frame from the bullet-time snap, as a 1-beat teaser */
 const drawTeaser: Spec['draw'] = (ctx, t, f) => {
-  drawBullet(ctx, M.snap + 0.3, M.snap);
-  invert(ctx);
+  drawImpactFrame(ctx, M.snap, true);
   void t;
   void f;
 };
@@ -57,7 +56,11 @@ const drawHud = (ctx: Ctx, f: number) => {
   const shown = f - (f % 4); // steps on 4s so the 60/30 fps blends never ghost two numbers
   const s = `FRAME ${String(shown).padStart(5, '0')} / ${String(TOTAL).padStart(5, '0')} · 120 FPS · BUGS: 0`;
   ctx.save();
-  text(ctx, s, W / 2, 290, {size: 27, family: FONT.mono, weight: 700, color: withA(P.cream, 0.78), track: 1});
+  ctx.fillStyle = 'rgba(8,7,11,0.42)';
+  ctx.beginPath();
+  ctx.roundRect(W / 2 - 350, 258, 700, 52, 10);
+  ctx.fill();
+  text(ctx, s, W / 2, 290, {size: 27, family: FONT.mono, weight: 700, color: withA(P.cream, 0.85), track: 1});
   ctx.fillStyle = withA(P.orange, 0.9);
   ctx.fillRect(W / 2 - 330, 302, 660 * ((f % 4 === 0 ? f : shown) / TOTAL), 3);
   ctx.restore();
@@ -89,15 +92,20 @@ export const renderFrame = (out: Ctx, f: number) => {
     }
   }
   const h = hits(f, sp.hit);
+  if (isImpactFrame(f)) {
+    // the impact frame is its own flash: keep it crisp two-tone
+    h.flash = 0;
+    h.ca = 0;
+    h.glitch = 0;
+  }
   out.setTransform(1, 0, 0, 1, 0, 0);
   out.globalAlpha = 1;
   out.globalCompositeOperation = 'source-over';
   camera(out, acc, h);
-  bloom(out, sp.bloom * (1 + h.flash));
+  if (!isImpactFrame(f)) bloom(out, sp.bloom * (1 + h.flash));
   chromatic(out, h.ca);
   glitch(out, h.glitch, h.glitchSeed);
   lightLeak(out, f, sp.leak);
-  if (f >= S.bullet[0] && f < S.bullet[1] && isImpactFrame(f)) invert(out);
   if (f >= S.punch[0]) punchPost(out, f);
   flash(out, h.flash);
   if (sp.scan) scanlines(out, sp.scan);

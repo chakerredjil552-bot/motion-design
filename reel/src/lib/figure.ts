@@ -100,6 +100,8 @@ export type FigStyle = {
   boilSeed: number;
   boilAmt?: number;
   stretch?: number; // smear stretch along x
+  bulk?: number; // limb thickness multiplier
+  coat?: boolean; // flared jacket tails
 };
 
 export const figurePath = (pose: Pose, st: FigStyle) => {
@@ -110,40 +112,59 @@ export const figurePath = (pose: Pose, st: FigStyle) => {
   const j: Record<string, Pt> = {};
   JOINTS.forEach((k, i) => (j[k] = bj(k, i)));
   const p = new Path2D();
+  const B = st.bulk ?? 1.38;
   // legs
-  capsuleP(p, j.lHip, j.lKn, 31, 24);
-  capsuleP(p, j.lKn, j.lFt, 24, 15);
-  capsuleP(p, j.rHip, j.rKn, 31, 24);
-  capsuleP(p, j.rKn, j.rFt, 24, 15);
+  capsuleP(p, j.lHip, j.lKn, 31 * B, 24 * B);
+  capsuleP(p, j.lKn, j.lFt, 24 * B, 15 * B);
+  capsuleP(p, j.rHip, j.rKn, 31 * B, 24 * B);
+  capsuleP(p, j.rKn, j.rFt, 24 * B, 15 * B);
   // feet
   for (const ft of [j.lFt, j.rFt]) {
     const d = st.facing;
-    polyCW(p, [[ft[0] - 18 * d, ft[1] - 14], [ft[0] + 46 * d, ft[1] + 4], [ft[0] + 40 * d, ft[1] + 18], [ft[0] - 22 * d, ft[1] + 16]]);
+    const fs = 0.75 + 0.25 * B;
+    polyCW(p, [[ft[0] - 22 * d * fs, ft[1] - 18 * fs], [ft[0] + 56 * d * fs, ft[1] + 4 * fs], [ft[0] + 50 * d * fs, ft[1] + 22 * fs], [ft[0] - 26 * d * fs, ft[1] + 20 * fs]]);
   }
   // torso (tapered, with lats)
   const [ls, rs, lh, rh, ch] = [j.lSh, j.rSh, j.lHip, j.rHip, j.chest];
   const sgn = rs[0] >= ls[0] ? 1 : -1;
-  const A: Pt = [ls[0] - 8 * sgn, ls[1] - 6];
+  const tw = 10 * B;
+  const A: Pt = [ls[0] - tw * sgn, ls[1] - 8];
   const torso: Pt[] = [A];
-  torso.push(...quadPts(A, [ch[0], ch[1] - 70], [rs[0] + 8 * sgn, rs[1] - 6]));
-  torso.push(...quadPts([rs[0] + 8 * sgn, rs[1] - 6], [rs[0] + 24 * sgn, (rs[1] + rh[1]) / 2], [rh[0] + 18 * sgn, rh[1]]));
-  torso.push([lh[0] - 18 * sgn, lh[1] + 6]);
-  torso.push(...quadPts([lh[0] - 18 * sgn, lh[1] + 6], [ls[0] - 26 * sgn, (ls[1] + lh[1]) / 2], A).slice(0, -1));
+  torso.push(...quadPts(A, [ch[0], ch[1] - 80], [rs[0] + tw * sgn, rs[1] - 8]));
+  torso.push(...quadPts([rs[0] + tw * sgn, rs[1] - 8], [rs[0] + 3 * tw * sgn, (rs[1] + rh[1]) / 2], [rh[0] + 2.2 * tw * sgn, rh[1]]));
+  torso.push([lh[0] - 2.2 * tw * sgn, lh[1] + 8]);
+  torso.push(...quadPts([lh[0] - 2.2 * tw * sgn, lh[1] + 8], [ls[0] - 3.2 * tw * sgn, (ls[1] + lh[1]) / 2], A).slice(0, -1));
   polyCW(p, torso);
+  // flared jacket tails from the hips, trailing behind
+  if (st.coat) {
+    const d0 = st.facing;
+    const w0 = st.wind ?? 1;
+    const hipC: Pt = [(lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2];
+    const fl = noise1(st.t * 0.07, 61) * 30 * w0;
+    polyCW(p, [
+      [hipC[0] - 70 * B, hipC[1] - 40],
+      [hipC[0] + 70 * B, hipC[1] - 40],
+      [hipC[0] + 60 * B - d0 * 40, hipC[1] + 120 + fl * 0.3],
+      [hipC[0] - d0 * (200 + fl), hipC[1] + 150 + fl],
+      [hipC[0] - d0 * (150 + fl), hipC[1] + 60],
+    ]);
+  }
   // arms
-  capsuleP(p, j.lSh, j.lEl, 22, 18);
-  capsuleP(p, j.lEl, j.lHa, 18, 15);
-  capsuleP(p, j.rSh, j.rEl, 22, 18);
-  capsuleP(p, j.rEl, j.rHa, 18, 15);
-  p.moveTo(j.lHa[0] + 26, j.lHa[1]);
-  p.arc(j.lHa[0], j.lHa[1], 26, 0, TAU);
-  p.moveTo(j.rHa[0] + 26, j.rHa[1]);
-  p.arc(j.rHa[0], j.rHa[1], 26, 0, TAU);
+  capsuleP(p, j.lSh, j.lEl, 22 * B, 18 * B);
+  capsuleP(p, j.lEl, j.lHa, 18 * B, 15 * B);
+  capsuleP(p, j.rSh, j.rEl, 22 * B, 18 * B);
+  capsuleP(p, j.rEl, j.rHa, 18 * B, 15 * B);
+  const fr = 26 * (0.6 + 0.4 * B);
+  p.moveTo(j.lHa[0] + fr, j.lHa[1]);
+  p.arc(j.lHa[0], j.lHa[1], fr, 0, TAU);
+  p.moveTo(j.rHa[0] + fr, j.rHa[1]);
+  p.arc(j.rHa[0], j.rHa[1], fr, 0, TAU);
   // neck + head
-  capsuleP(p, j.chest, j.neck, 26, 20);
+  capsuleP(p, j.chest, j.neck, 26 * B, 20 * B);
   const hd = j.head;
-  p.moveTo(hd[0] + 46, hd[1]);
-  p.ellipse(hd[0], hd[1], 46, 54, 0, 0, TAU);
+  const hs = 0.8 + 0.2 * B;
+  p.moveTo(hd[0] + 46 * hs, hd[1]);
+  p.ellipse(hd[0], hd[1], 46 * hs, 54 * hs, 0, 0, TAU);
   // hair
   const d = st.facing;
   const wind = st.wind ?? 1;
@@ -159,7 +180,7 @@ export const figurePath = (pose: Pose, st: FigStyle) => {
     const ay = Math.sin(a + flutter * d);
     const bx = hd[0] + ax * 40;
     const by = hd[1] + ay * 44;
-    hair.push([bx + ax * len - ay * 6, by + ay * len + ax * 6]);
+    hair.push([bx + ax * len * hs - ay * 8, by + ay * len * hs + ax * 8]);
     const a2 = a + 0.25 * d;
     hair.push([hd[0] + Math.cos(a2) * 44, hd[1] + Math.sin(a2) * 48]);
   });

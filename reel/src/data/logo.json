@@ -1,1 +1,7 @@
-{"file": null, "pixelArt": false}
+{
+  "file": "logo/claude-code.png",
+  "original": "logo/claude-code-original.png",
+  "pixelArt": true,
+  "note": "keyed from the supplied PNG by scripts/key_logo.py (alpha only, colours untouched); eye holes in source px",
+  "eyes": [[56, 76, 14, 27], [155, 76, 14, 27]]
+}

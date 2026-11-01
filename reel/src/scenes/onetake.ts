@@ -2,7 +2,8 @@
 // u = (videoBeat - 12) / 2 ; world i occupies u in [i, i+1). Within a world the zoom is Z^ease(x), so every
 // portal crossing lands exactly on a 2-beat line. Fixed point F makes the portal centre arrive at screen centre.
 import {CX, CY, E, M, P, TAU, TL, W, beatOf, clamp, hits, spring} from '../lib/core';
-import {Ctx, FONT, fitSize, font, withA} from '../lib/draw';
+import {Ctx, FONT, fitSize, text} from '../lib/draw';
+import {advancesP, paintGlyph} from '../lib/glyphs';
 import {WORLDS, Z} from './worlds';
 import {drawBulletHome} from './bullet';
 import {drawShardBlast} from './shatter';
@@ -75,9 +76,9 @@ export const drawSkillTitle = (
   yBase = 1470,
 ) => {
   const two = lines.length > 1;
-  const sizes = lines.map((ln, k) => fitSize(ctx, ln, 940, k === 0 ? 168 : 112, FONT.display, 2));
+  const sizes = lines.map((ln, k) => Math.round(fitSize(ctx, ln, 940, k === 0 ? 168 : 112, FONT.display, 2)));
   const ys = two ? [yBase - 120, yBase] : [yBase];
-  const labelY = (two ? ys[0] - sizes[0] : ys[0] - sizes[0]) - 22;
+  const labelY = ys[0] - sizes[0] - 22;
   const exitK = clamp(1 - exitIn / 14);
   // label
   const la = clamp(age / 6) * (1 - exitK);
@@ -86,25 +87,18 @@ export const drawSkillTitle = (
     ctx.globalAlpha = la;
     ctx.fillStyle = P.orange;
     ctx.fillRect(70, labelY - 26, 10 + 40 * E.outCubic(clamp(age / 10)), 8);
-    font(ctx, 30, FONT.mono, 800);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = P.orange;
-    ctx.fillText(label, 70 + 60, labelY - 14);
+    text(ctx, label, 70 + 60, labelY - 14, {size: 30, family: FONT.mono, weight: 800, color: P.orange, align: 'left'});
     ctx.restore();
   }
   let j = 0;
   lines.forEach((ln, k) => {
     const size = sizes[k];
-    font(ctx, size, FONT.display, 400);
-    (ctx as any).letterSpacing = '0px';
-    const widths = [...ln].map((c) => ctx.measureText(c).width + 2);
-    const total = widths.reduce((a, b) => a + b, 0);
+    const adv = advancesP(ln, size, FONT.display, 400, 2);
     let x = 70;
-    void total;
     [...ln].forEach((c, ci) => {
       const la2 = age - 1 - j * 0.9;
       const sp = spring(la2, 3.4, 0.36, 26);
-      const ex = clamp((exitK * 1.6) - j * 0.03);
+      const ex = clamp((exitK - j * 0.012) / 0.66); // every letter is fully gone when exitIn reaches 0
       const yOff = (1 - sp) * size * 0.9 - E.inCubic(ex) * 220;
       const sc = (1 + 0.5 * (1 - clamp(sp))) * (1 + 0.6 * E.inCubic(ex)) * (1 + 0.04 * bounce);
       const alpha = clamp(la2 / 3) * (1 - E.inQuad(ex));
@@ -115,26 +109,21 @@ export const drawSkillTitle = (
         ctx.rect(0, ys[k] - size * 1.25 - 400 * ex, W, size * 1.45 + 400 * ex);
         ctx.clip();
         ctx.globalAlpha = alpha;
-        ctx.translate(x + widths[ci] / 2, ys[k] + yOff);
+        ctx.translate(x + adv[ci] / 2, ys[k] + yOff);
         ctx.scale(sc, sc);
         ctx.transform(1, 0, -0.08, 1, 0, 0);
-        font(ctx, size, FONT.display, 400);
-        ctx.textAlign = 'center';
-        ctx.lineJoin = 'round';
-        ctx.fillStyle = k === 0 ? P.orange : P.neon;
-        ctx.fillText(c, 7, 7);
-        ctx.lineWidth = 12;
-        ctx.strokeStyle = '#08070B';
-        ctx.strokeText(c, 0, 0);
-        ctx.fillStyle = P.cream;
-        ctx.fillText(c, 0, 0);
+        ctx.translate(-adv[ci] / 2, 0);
+        ctx.save();
+        ctx.translate(7, 7);
+        paintGlyph(ctx, c, size, FONT.display, 400, {fill: k === 0 ? P.orange : P.neon});
+        ctx.restore();
+        paintGlyph(ctx, c, size, FONT.display, 400, {stroke: '#08070B', lineWidth: 12, fill: P.cream});
         ctx.restore();
       }
-      x += widths[ci];
+      x += adv[ci];
       j++;
     });
   });
-  void withA;
 };
 
 const drawTitle = (ctx: Ctx, t: number, f: number, i: number) => {

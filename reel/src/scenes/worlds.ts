@@ -669,7 +669,7 @@ const pageBallLayer = (ctx: Ctx, idx: number, seed: number) => {
   text(ctx, `FR ${String(((idx % 24) + 24) % 24 + 1).padStart(2, '0')}`, PAGE.x + PAGE.w - 50, PAGE.y + 110, {size: 40, family: FONT.mono, weight: 800, color: '#2A241E', align: 'right'});
   // timing chart
   const tx = PAGE.x + 70;
-  const ty = PAGE.y + PAGE.h - 90;
+  const ty = PAGE.y + 150;
   ctx.strokeStyle = '#2A241E';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -777,7 +777,7 @@ const W4: World = {
       ctx.closePath();
       ctx.stroke();
     }
-    text(ctx, 'NEXT SCENE →', W4P[0] - 130, W4P[1] - 232, {size: 30, family: FONT.mono, weight: 700, color: '#1C1814', align: 'left'});
+    text(ctx, 'NEXT SCENE »', W4P[0] - 130, W4P[1] - 232, {size: 30, family: FONT.mono, weight: 700, color: '#1C1814', align: 'left'});
     ctx.restore();
     // flipbook stack on top: flips at local beats -0.25, 0.1, 0.35, final at 0.55
     const flips = [-0.5, -0.2, 0.1, 0.32, 0.52];
@@ -953,14 +953,12 @@ const W6: World = {
     fillBg(ctx, '#0A090D');
     // marquee rows of outlined type
     ctx.save();
-    for (let r = 0; r < 9; r++) {
-      const y = 300 + r * 180;
+    for (let r = 0; r < 7; r++) {
+      const y = 560 + r * 160; // rows stay inside the text-safe band (cap height ~110 px)
       const dir = r % 2 ? 1 : -1;
       const off = ((lt * 6 * dir + r * 210) % 1200) - 1200;
-      ctx.font = `400 150px "${FONT.display}"`;
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = withA(r % 3 === 0 ? P.orange : P.cream, 0.1);
-      for (let k = 0; k < 4; k++) ctx.strokeText('TYPE THAT MOVES ', off + k * 1200, y);
+      const col = withA(r % 3 === 0 ? P.orange : P.cream, 0.1);
+      for (let k = 0; k < 4; k++) text(ctx, 'TYPE THAT MOVES ', off + k * 1200, y, {size: 140, align: 'left', stroke: col, lineWidth: 2, strokeOnly: true});
     }
     ctx.restore();
     const lb = lbOf(lt);
@@ -982,11 +980,7 @@ const W6: World = {
       ctx.scale(sc * squash, sc / squash);
       ctx.rotate(-0.05 * (cur % 2 ? 1 : -1) * (1 - k));
       if (cur === 2) {
-        ctx.font = `400 ${size}px "${FONT.display}"`;
-        ctx.textAlign = 'center';
-        ctx.lineWidth = 14;
-        ctx.strokeStyle = P.neon;
-        ctx.strokeText(w.w, 0, 0);
+        text(ctx, w.w, 0, 0, {size, stroke: P.neon, lineWidth: 14, strokeOnly: true});
       } else {
         text(ctx, w.w, 10, 10, {size, color: cur % 2 ? P.cream : P.orange});
         text(ctx, w.w, 0, 0, {size, color: w.c});
@@ -1041,7 +1035,8 @@ const W6: World = {
     ctx.stroke();
     ctx.restore();
     const kb = spring(age, 3, 0.4, 24);
-    text(ctx, 'BUGS:', W6P[0], W6P[1] - 470 + (1 - kb) * -200, {size: 150, color: P.cream, track: 6});
+    // sits on the zero so it stays inside the text-safe band while the camera dives
+    text(ctx, 'BUGS:', W6P[0], W6P[1] - 250 + (1 - kb) * -160, {size: 132, color: P.cream, track: 6, stroke: '#08070B', lineWidth: 12});
   },
 };
 
@@ -1160,7 +1155,7 @@ const W7: World = {
       ctx.fillStyle = P.cream;
       circle(ctx, x + Math.cos(pa) * 40 * (0.5 + 0.5 * Math.sin(lt * 0.02 + i)), y + Math.sin(pa) * 40, 11);
       ctx.fill();
-      text(ctx, nm, x, y + 140, {size: 26, family: FONT.mono, weight: 800, color: withA(P.cream, 0.8)});
+      void nm; // no labels: the wheels sit in the bottom UI zone
       ctx.restore();
     });
   },

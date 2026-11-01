@@ -1,6 +1,7 @@
 // Scene 1 (terminal), scene 7 (closing line) and the shared terminal renderer.
 import {CX, E, FPB, H, M, P, TL, W, clamp, envAt, hits, invLerp, ring, rnd, spring} from '../lib/core';
-import {Ctx, FONT, fillBg, font, glow, roundRect, text, withA} from '../lib/draw';
+import {Ctx, FONT, fillBg, glow, roundRect, text, withA} from '../lib/draw';
+import {paintGlyph, textWidthP} from '../lib/glyphs';
 
 const WIN = {x: 70, y: 420, w: 940, h: 1010};
 const PAD = 58;
@@ -28,14 +29,13 @@ const warnIcon = (ctx: Ctx, x: number, y: number, s: number, color: string) => {
 
 /** wraps words to width; returns lines */
 export const wrap = (ctx: Ctx, s: string, maxW: number, size: number, family = FONT.mono, weight = 400) => {
-  font(ctx, size, family, weight);
-  (ctx as any).letterSpacing = '0px';
+  void ctx;
   const words = s.split(' ');
   const lines: string[] = [];
   let cur = '';
   for (const w of words) {
     const test = cur ? `${cur} ${w}` : w;
-    if (ctx.measureText(test).width > maxW && cur) {
+    if (textWidthP(test, size, family, weight) > maxW && cur) {
       lines.push(cur);
       cur = w;
     } else cur = test;
@@ -103,8 +103,7 @@ export const drawTerminal = (ctx: Ctx, t: number, f: number) => {
   // prompt line
   const pr = typed(TL.typing.prompt, t);
   text(ctx, '>', x0, y, {size: MONO, family: FONT.mono, weight: 700, color: P.orange, align: 'left'});
-  font(ctx, MONO, FONT.mono, 400);
-  const pre = ctx.measureText('> ').width;
+  const pre = textWidthP('> ', MONO, FONT.mono, 400);
   // per-character pop on 2s
   let cx = x0 + pre;
   for (let i = 0; i < pr.s.length; i++) {
@@ -112,13 +111,11 @@ export const drawTerminal = (ctx: Ctx, t: number, f: number) => {
     const age = t - k.f;
     const sc = 1 + 0.35 * Math.max(0, 1 - age / 6);
     ctx.save();
-    font(ctx, MONO, FONT.mono, 400);
-    const cw = ctx.measureText(pr.s[i]).width;
+    const cw = textWidthP(pr.s[i], MONO, FONT.mono, 400);
     ctx.translate(cx + cw / 2, y - MONO * 0.35);
     ctx.scale(sc, sc);
-    ctx.fillStyle = P.cream;
-    ctx.textAlign = 'center';
-    ctx.fillText(pr.s[i], 0, MONO * 0.35);
+    ctx.translate(-cw / 2, MONO * 0.35);
+    paintGlyph(ctx, pr.s[i], MONO, FONT.mono, 400, {fill: P.cream});
     ctx.restore();
     cx += cw;
   }
@@ -133,12 +130,14 @@ export const drawTerminal = (ctx: Ctx, t: number, f: number) => {
   if (replyOn) {
     const a = t - M.reply;
     const s = spring(a, 3.2, 0.32, 40);
-    const sc = 1.9 - 0.9 * s + 0.06 * h.bounce / 0.35;
+    const sc = 1.45 - 0.45 * s + (0.06 * h.bounce) / 0.35;
+    const rw = textWidthP(TL.copy.reply, 78, FONT.mono, 800);
     ctx.save();
-    ctx.translate(x0, y);
+    // scale about the text centre so the slam never covers the prompt line
+    ctx.translate(x0 + rw / 2, y - 28);
     ctx.scale(sc, sc);
     ctx.rotate(-0.06 * (1 - s));
-    text(ctx, TL.copy.reply, 0, 0, {size: 78, family: FONT.mono, weight: 800, color: P.orange, align: 'left'});
+    text(ctx, TL.copy.reply, -rw / 2, 28, {size: 78, family: FONT.mono, weight: 800, color: P.orange, align: 'left'});
     ctx.restore();
   }
 
@@ -191,8 +190,7 @@ export const drawTerminal = (ctx: Ctx, t: number, f: number) => {
   if (st) {
     text(ctx, st, x0, y, {size: 58, family: FONT.mono, weight: 800, color: P.cream, align: 'left'});
     if (cursorOn(t)) {
-      font(ctx, 58, FONT.mono, 800);
-      const w = ctx.measureText(st).width;
+      const w = textWidthP(st, 58, FONT.mono, 800);
       ctx.fillStyle = P.orange;
       ctx.fillRect(x0 + w + 8, y - 48, 30, 56);
     }
@@ -222,8 +220,7 @@ export const drawClosing = (ctx: Ctx, t: number, f: number) => {
     const yy = y0 + i * lh;
     if (shown) {
       text(ctx, shown, x0, yy, {size, family: FONT.mono, weight: 700, color: P.cream, align: 'left'});
-      font(ctx, size, FONT.mono, 700);
-      lastX = x0 + ctx.measureText(shown).width;
+      lastX = x0 + textWidthP(shown, size, FONT.mono, 700);
       lastY = yy;
     }
   });
