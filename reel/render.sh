@@ -51,7 +51,8 @@ stage_bundle() {
   npx remotion bundle src/index.ts --out-dir "$BUNDLE" --log=error >/dev/null
 }
 
-count_frames() { ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 "$1" 2>/dev/null || echo 0; }
+# ffprobe's csv output carries a trailing comma ("360,"): keep digits only
+count_frames() { ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 "$1" 2>/dev/null | tr -dc '0-9' || echo 0; }
 
 # render a frame range with retries at lower concurrency; never skips silently
 render_range() {

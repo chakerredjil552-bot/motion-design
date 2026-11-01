@@ -9,7 +9,7 @@ const [outDir, ...frames] = process.argv.slice(2);
 const browserExecutable = process.env.REMOTION_BROWSER ?? '/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell';
 fs.mkdirSync(outDir, {recursive: true});
 const serveUrl = process.env.BUNDLE ?? (await bundle({entryPoint: path.resolve('src/index.ts')}));
-const browser = await openBrowser('chrome', {browserExecutable, chromiumOptions: {gl: 'swangle'}});
+const browser = await openBrowser('chrome', {browserExecutable, chromiumOptions: {gl: 'swiftshader'}});
 const composition = await selectComposition({serveUrl, id: process.env.COMP ?? 'Reel', puppeteerInstance: browser, browserExecutable});
 for (const f of frames) {
   const t0 = Date.now();
