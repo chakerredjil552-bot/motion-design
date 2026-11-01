@@ -91,6 +91,32 @@ def main():
     on = [int(np.sum(np.abs(((kick_t - o) / B) - np.round((kick_t - o) / B)) * B < 0.03)) for o in (off, off + B / 2)]
     off = off if on[0] >= on[1] else off + B / 2
     off = off % B
+    off_fit = off
+
+    # --- attack alignment: the fit locks onto the kick body (max slope of the low band), but every beat's audible
+    # transient starts earlier. Measure the onset on beats that carry a kick (broadband envelope crossing 30 % of
+    # its rise) and move the grid so each beat sits 2 ms after its attack onset. Beat numbering is kept (no wrap).
+    hp = ss.sosfiltfilt(ss.butter(2, 40, btype="high", fs=sr, output="sos"), y)
+    bb = np.convolve(np.abs(hp), np.ones(48) / 48, mode="same")
+    leads = []
+    for bi in range(int((dur - off) / B)):
+        tg = off + bi * B
+        if len(kick_t) == 0 or np.min(np.abs(kick_t - tg)) > 0.03:
+            continue
+        i0 = int((tg - 0.035) * sr)
+        i1 = int((tg + 0.005) * sr)
+        p0 = int((tg - 0.08) * sr)
+        if p0 < 0 or i1 >= len(bb):
+            continue
+        pre = float(np.median(bb[p0:int((tg - 0.04) * sr)]))
+        seg = bb[i0:i1]
+        pk = float(seg.max())
+        if pk < 5 * pre:
+            continue
+        k = int(np.argmax(seg > pre + 0.3 * (pk - pre)))
+        leads.append((i0 + k) / sr - tg)
+    attack_lead = float(np.median(leads)) if leads else 0.0
+    off = off + attack_lead + 0.002
 
     # tempo hypotheses: does a kick land on (nearly) every beat of the grid?
     tests = {}
@@ -165,11 +191,13 @@ def main():
             out.append(float(q if abs(q - x) < 0.03 else x))
         return out
 
+    # band-envelope slope peaks lag the audible attack by the same amount as the grid fit did: correct them too
+    att = lambda ts: [float(x) + attack_lead + 0.002 for x in ts]
     events = {
-        "kick": [snap16(k_t), np.clip(k_s, 0, 1).tolist()],
-        "snare": [snap16(sn_t), np.clip(sn_s, 0, 1).tolist()],
-        "cowbell": [snap16(cb_t), np.clip(cb_s, 0, 1).tolist()],
-        "hat": [snap16(h_t), np.clip(h_s, 0, 1).tolist()],
+        "kick": [snap16(att(k_t)), np.clip(k_s, 0, 1).tolist()],
+        "snare": [snap16(att(sn_t)), np.clip(sn_s, 0, 1).tolist()],
+        "cowbell": [snap16(att(cb_t)), np.clip(cb_s, 0, 1).tolist()],
+        "hat": [snap16(att(h_t)), np.clip(h_s, 0, 1).tolist()],
     }
 
     out = {
@@ -181,6 +209,9 @@ def main():
         "bpm": bpm,
         "beat_s": B,
         "offset_s": off,
+        "offset_fit_s": off_fit,
+        "attack_lead_ms": attack_lead * 1000,
+        "attack_beats_measured": len(leads),
         "bar_phase": bar_phase,
         "drop_candidates": [{"beat": i, "time_s": float(off + i * B), "score": float(s)} for s, i in drops[:4]],
         "beat_rms_db": rms_db.round(2).tolist(),
@@ -194,7 +225,8 @@ def main():
         print(f"  {k:18s} {v['bpm']:7.2f} BPM: {100 * v['beats_with_kick']:3.0f}% of beats carry a kick, "
               f"{100 * v['kicks_on_beat']:3.0f}% of kicks on a beat")
     print(f"fit {bpm_fit:.3f} BPM (resid {resid_ms:.1f} ms) -> using {bpm} BPM, beat {B:.5f}s, "
-          f"offset {off:.4f}s, bar phase {bar_phase}")
+          f"offset {off:.4f}s (fit {off_fit:.4f}s, attacks lead by {attack_lead * 1000:.1f} ms over {len(leads)} beats), "
+          f"bar phase {bar_phase}")
     print("drops:", [(d['beat'], round(d['time_s'], 3), round(d['score'], 2)) for d in out["drop_candidates"]])
     print("events:", {k: len(v[0]) for k, v in events.items()})
     return 0

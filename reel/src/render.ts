@@ -46,7 +46,7 @@ export const specFor = (f: number): Spec => {
     return {draw: drawBullet, samples: fast ? 4 : 2, shutter: fast ? 0.9 : 0.5, hit: 1, bloom: 0.55, leak: 0.25, grain: 0.07, vignette: 0.5};
   }
   if (f < S.grid[1]) return {draw: drawGrid, samples: 3, shutter: 0.7, hit: 1, bloom: 0.35, leak: 0.1, grain: 0.06, vignette: 0.3};
-  if (f < S.hardcut[1]) return {draw: black, samples: 1, shutter: 0, hit: 0, bloom: 0, leak: 0, grain: 0, vignette: 0};
+  if (f < S.hardcut[1]) return {draw: black, samples: 2, shutter: 0.5, hit: 0, bloom: 0, leak: 0, grain: 0, vignette: 0};
   if (f < S.closing[1]) return {draw: drawClosing, samples: 2, shutter: 0.5, hit: 0, bloom: 0.3, leak: 0, grain: 0.07, vignette: 0.55, scan: 0.08};
   return {draw: drawPunch, samples: 2, shutter: 0.6, hit: 0, bloom: 0.35, leak: 0.1, grain: 0.07, vignette: 0.45};
 };

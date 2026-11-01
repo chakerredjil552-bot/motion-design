@@ -476,8 +476,8 @@ def build_music(tl):
     wet = np.clip((np.arange(s1 - s0) / SR) / (RAMP_W * B), 0, 1)[:, None] * 0.65
     music[s0:s1] = seg * (1 - wet) + dark * wet * 1.15
 
-    # hard cut: music dies dead right before the downbeat
-    cut = int((MUSIC_END_V * B - 0.001) * SR)
+    # hard cut: music dies dead right before the downbeat's attack (beats sit 2 ms after the attack onset)
+    cut = int((MUSIC_END_V * B - 0.003) * SR)
     music[cut - int(0.001 * SR):cut] *= np.linspace(1, 0, int(0.001 * SR))[:, None]
     music[cut:] = 0
     return music

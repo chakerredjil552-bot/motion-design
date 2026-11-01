@@ -83,13 +83,39 @@ def within(iv, windows, tol=2 / FPS):
 
 
 def frame_luma(path, frame, fps):
-    t = (frame + 0.5) / fps
+    t = (frame - 0.25) / fps  # input seek returns the first frame with pts >= t: (k-0.25)/fps -> frame k
     r = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.5f}", "-i", path, "-frames:v", "1", "-vf", "scale=108:192,format=gray",
                         "-f", "rawvideo", "-"], capture_output=True, check=True)
     return float(np.frombuffer(r.stdout, dtype=np.uint8).mean())
 
 
+SR = 48000
+B_S = 60.0 / TL["bpm"]
+
+
+def decode_audio(path):
+    pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-map", "0:a", "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+                         capture_output=True, check=True).stdout
+    return np.frombuffer(pcm, dtype=np.float32).astype(np.float64)
+
+
+def hf_onset(sig, frame, pre=0.03, post=0.03):
+    """first 0.5 ms step where the >2 kHz RMS (2 ms) jumps above 3x its recent median and 25 % of the local max"""
+    import scipy.signal as ss
+    hp = ss.sosfiltfilt(ss.butter(4, 2000, btype="high", fs=SR, output="sos"), sig)
+    c = frame / FPS
+    ts = np.arange(c - pre - 0.03, c + post, 0.0005)
+    w = int(0.002 * SR)
+    rms = np.array([np.sqrt(np.mean(hp[int(t * SR):int(t * SR) + w] ** 2)) for t in ts])
+    base_n = int(0.03 / 0.0005)
+    base = np.median(rms[:base_n]) + 1e-9
+    win = rms[base_n:]
+    ok = (win > 3 * base) & (win > 0.25 * win.max())
+    return float(ts[base_n + int(np.argmax(ok))] * FPS) if ok.any() else -1.0
+
+
 def audio_checks(path):
+    import soundfile as sf
     r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-map", "0:a", "-af", "ebur128=peak=true", "-f", "null", "-"],
                        capture_output=True, text=True)
     txt = r.stderr[r.stderr.rfind("Summary:"):]
@@ -97,32 +123,36 @@ def audio_checks(path):
     tp = float(re.search(r"Peak:\s*(-?[\d.]+) dBFS", txt).group(1))
     check("loudness ~ -14 LUFS (±1)", abs(lufs + 14) <= 1.0, f"{lufs:.2f} LUFS")
     check("true peak <= -1 dBTP", tp <= -1.0, f"{tp:.2f} dBTP")
-    # decode audio for timing checks
-    pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-map", "0:a", "-ac", "1", "-ar", "48000", "-f", "f32le", "-"],
-                         capture_output=True, check=True).stdout
-    x = np.abs(np.frombuffer(pcm, dtype=np.float32))
-    sr = 48000
-    f2s = lambda f: int(f / FPS * sr)
-    # the freeze beat is silent, the drop lands on its frame
-    seg = x[f2s(M["freeze"]) + 200:f2s(M["drop"]) - 400]
-    check("freeze beat is silent (808-881)", seg.max() < 2e-3, f"max {seg.max():.5f}")
-    after = x[f2s(M["drop"]) - 2400:f2s(M["drop"]) + 4800]
-    onset = np.argmax(after > 0.05) + f2s(M["drop"]) - 2400
-    drop_frame = onset / sr * FPS
-    check("drop lands on frame 882 (±1)", abs(drop_frame - M["drop"]) <= 1.0, f"audio onset at frame {drop_frame:.2f}")
-    # hard cut: music dead from 2792, silence until the closing line
-    hc = x[f2s(M["hardcut"]) + 300:f2s(M["closing"]) - 200]
-    check("hard cut is silent (2792-2938)", hc.max() < 2e-3, f"max {hc.max():.5f}")
-    pre = x[f2s(M["hardcut"]) - 2000:f2s(M["hardcut"]) + 300]
-    last = np.nonzero(pre > 0.01)[0]
-    cut_frame = (last[-1] + f2s(M["hardcut"]) - 2000) / sr * FPS if len(last) else -1
-    check("music stops dead on frame 2792 (±1)", abs(cut_frame - M["hardcut"]) <= 1.0, f"last loud sample at frame {cut_frame:.2f}")
-    # the snap hit lands on its frame
-    sn = x[f2s(M["snap"]) - 4800:f2s(M["snap"]) + 4800]
-    env = np.convolve(sn, np.ones(96) / 96, mode="same")
-    d = np.diff(env)
-    snap_frame = (np.argmax(d) + f2s(M["snap"]) - 4800) / sr * FPS
-    check("bullet-time snap hit lands on frame 2351 (±1)", abs(snap_frame - M["snap"]) <= 1.0, f"steepest attack at frame {snap_frame:.2f}")
+    enc = decode_audio(path)
+    ref, rsr = sf.read(os.path.join(OUT, "audio", "mix.wav"))
+    ref = ref.mean(axis=1)
+    assert rsr == SR
+    # delivered audio is sample-aligned with the reference mix (no codec delay, no drift)
+    a0, a1 = int(5 * SR), int(9 * SR)
+    lags = range(-480, 481)
+    corr = [float(np.dot(ref[a0:a1], enc[a0 + l:a1 + l])) for l in lags]
+    lag = list(lags)[int(np.argmax(corr))]
+    check("audio: delivered AAC sample-aligned with the mix", abs(lag) <= 48, f"lag {lag} samples ({lag / SR * 1000:.2f} ms)")
+    # the freeze beat (video beat 11 -> 12, frames 808-881) is digital silence in the mix
+    s0, s1 = int(11 * B_S * SR), int((12 * B_S - 0.006) * SR)
+    check("audio: freeze beat 808-881 is digital silence (mix)", np.abs(ref[s0:s1]).max() < 1e-6, f"max {np.abs(ref[s0:s1]).max():.2e}")
+    enc_rms = 20 * np.log10(np.sqrt(np.mean(enc[s0 + 150:s1 - int(0.025 * SR)] ** 2)) + 1e-12)
+    check("audio: freeze beat in the AAC is below -50 dBFS (codec noise only)", enc_rms < -50, f"{enc_rms:.1f} dBFS RMS")
+    # event landings: drop attack, bullet-time snap, contact (high-frequency onset)
+    for name, fr in (("drop attack", M["drop"]), ("bullet-time contact", M["contact"]), ("bullet-time snap hit", M["snap"])):
+        o_ref = hf_onset(ref, fr)
+        o_enc = hf_onset(enc, fr)
+        check(f"audio: {name} lands on frame {fr} (±1)", abs(o_ref - fr) <= 1 and abs(o_enc - fr) <= 1,
+              f"onset at frame {o_ref:.2f} (mix) / {o_enc:.2f} (AAC)")
+    # hard cut: the music stops dead on 2792 and the mix is digital silence until the closing line
+    seg = np.abs(ref[int((M["hardcut"] - 60) / FPS * SR):int(M["closing"] / FPS * SR)])
+    nz = np.nonzero(seg > 1e-3)[0]
+    cut_frame = (nz[-1] + int((M["hardcut"] - 60) / FPS * SR)) / SR * FPS if len(nz) else -1
+    check("audio: music stops dead on frame 2792 (±1)", abs(cut_frame - M["hardcut"]) <= 1.0, f"last sample > -60 dBFS at frame {cut_frame:.2f}")
+    h0, h1 = int(M["hardcut"] / FPS * SR) + 1, int(M["closing"] / FPS * SR)
+    check("audio: hard cut 2792-2938 is digital silence (mix)", np.abs(ref[h0:h1]).max() == 0.0, f"max {np.abs(ref[h0:h1]).max():.2e}")
+    hc = np.abs(enc[h0 + 300:h1 - 200])
+    check("audio: hard cut silent in the AAC", hc.max() < 2e-3, f"max {hc.max():.5f}")
 
 
 def stills(path):
@@ -134,7 +164,7 @@ def stills(path):
                          2424, 2755, 2791, 2792, 2939, 3233, 3380, 3453, 3527, 3600, 3747, 4041, 4115]
                         + [p + o for p in TL["portals"] for o in (-1, 0, 1)] + TL["panels"]))
     for f in frames:
-        t = (f + 0.5) / FPS
+        t = (f - 0.25) / FPS
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.5f}", "-i", path, "-frames:v", "1",
                         "-vf", "drawbox=y=250:h=2:w=iw:color=red@0.8:t=fill,drawbox=y=1520:h=2:w=iw:color=red@0.8:t=fill",
                         os.path.join(d, f"f{f:04d}.png")], check=True)
@@ -149,7 +179,7 @@ def stills(path):
 def main():
     spec_checks(MASTER, "master", 120, TOTAL)
     spec_checks(REELS, "reels", 60, TOTAL // 2, bitrate=(15, 20))
-    spec_checks(FALLBACK, "fallback", 30, TOTAL // 4)
+    spec_checks(FALLBACK, "fallback", 30, TOTAL // 4, bitrate=(10, 14))
     if os.path.exists(MASTER):
         # intentional black: the hard cut (pure black) and the closing line typed on a near-black terminal
         # (blackdetect counts a frame as black when >= 98 % of its pixels are dark, so small text on black counts)
