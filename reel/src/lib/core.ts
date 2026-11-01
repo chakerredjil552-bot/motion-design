@@ -141,7 +141,37 @@ export type Hits = {
   bounce: number; // text bounce offset (-1..1)
 };
 
-/** the reusable hit system: kick = flash + 4 % punch + CA; snare = shake + glitch slice; cowbell = text bounce */
+// ------------------------------------------------------------------------------------------ cuts + earthquake
+/** one-take cuts land on these beat frames; CUT_TYPES[i] is the transition out of shot i */
+export const CUTS = TL.portals;
+export const CUT_TYPES = ['punch', 'whipL', 'spin', 'glitch', 'whipU', 'punch', 'whipR', 'punch'] as const;
+export type CutType = (typeof CUT_TYPES)[number];
+
+/** earthquake amplitude (px) for the beat at video-beat v, by section; 0 where the edit should breathe */
+const quakeAmp = (v: number, bf: number) => {
+  const down = v % 4 === 0; // video beat 0 mod 4 = song downbeat
+  if (bf < M.crack) return v >= 3 ? 7 : 0; // filtered intro: a pulse
+  if (bf < M.freeze) return 16 + 5 * (v - 6); // shatter build: grows into the freeze
+  if (bf < M.drop) return 0; // the silent freeze
+  if (bf < M.contact) return down ? 80 : 48; // one-take
+  if (bf < M.snap) return 0; // bullet-time float
+  if (bf < M.hardcut) return down ? 84 : 52; // snap aftermath + skill grid
+  return 0;
+};
+
+/** damped earthquake: heavy ~10 Hz wobble + 30 fps-style jitter + a downward jolt on downbeats */
+const quake = (age: number, A: number, seed: number, down: boolean) => {
+  if (A <= 0 || age < 0 || age > 40) return [0, 0, 0];
+  const e = Math.exp(-age / 10);
+  const dx = A * e * (0.62 * Math.sin(age * 0.55 + seed * 1.7) + 0.55 * noise1(age * 0.3 + seed * 7.1, 71));
+  let dy = A * e * (0.62 * Math.cos(age * 0.47 + seed * 2.3) + 0.55 * noise1(age * 0.3 + seed * 3.7, 73));
+  if (down) dy += A * 0.55 * Math.exp(-age / 4) * (age < 2 ? age / 2 : 1);
+  const rot = (A / 60) * 0.035 * e * Math.sin(age * 0.38 + seed * 5.3);
+  return [dx, dy, rot];
+};
+
+/** the reusable hit system: kick = flash + zoom punch + CA; snare = shake + glitch slice; cowbell = text bounce;
+ *  plus an earthquake on every beat and the one-take cut impacts */
 export const hits = (f: number, intensity = 1): Hits => {
   const k = last('kick', f);
   const sn = last('snare', f);
@@ -151,31 +181,65 @@ export const hits = (f: number, intensity = 1): Hits => {
   const fi = Math.floor(f);
   const kickS = clamp(k.s * 1.2);
   // 2-frame flash on strong kicks; big flashes on impacts
-  let flash = k.age >= 0 && k.age < 2 && kickS > 0.45 ? 0.16 * kickS : 0;
+  let flash = k.age >= 0 && k.age < 2 && kickS > 0.45 ? 0.18 * kickS : 0;
   if (im.age >= 0 && im.age < 2) flash = Math.max(flash, 0.85 * im.s);
-  if (sl.age >= 0 && sl.age < 2) flash = Math.max(flash, 0.35);
-  let punch = 0.04 * kickS * Math.max(0, ring(k.age, 7, 0.05));
-  punch += 0.09 * im.s * Math.max(0, ring(im.age, 14, 0.03));
-  punch += 0.05 * Math.max(0, ring(sl.age, 8, 0.05));
-  let ca = 7 * kickS * Math.exp(-Math.max(0, k.age) / 5) + 26 * im.s * Math.exp(-Math.max(0, im.age) / 10);
+  if (sl.age >= 0 && sl.age < 2) flash = Math.max(flash, 0.4);
+  let punch = 0.05 * kickS * Math.max(0, ring(k.age, 7, 0.05));
+  punch += 0.1 * im.s * Math.max(0, ring(im.age, 14, 0.03));
+  punch += 0.06 * Math.max(0, ring(sl.age, 8, 0.05));
+  let ca = 8 * kickS * Math.exp(-Math.max(0, k.age) / 5) + 26 * im.s * Math.exp(-Math.max(0, im.age) / 10);
   const snS = clamp(sn.s * 1.1);
   const sh = 16 * snS * Math.exp(-Math.max(0, sn.age) / 6) + 46 * im.s * Math.exp(-Math.max(0, im.age) / 16);
-  const shakeX = sh * noise1(fi * 0.9, 11);
-  const shakeY = sh * noise1(fi * 0.9, 29);
-  const shakeR = 0.004 * sh * noise1(fi * 0.7, 47);
-  const glitch = sn.age >= 0 && sn.age < 4 && sn.s > 0.75 ? (1 - sn.age / 4) * 0.55 * snS : 0;
+  let shakeX = sh * noise1(fi * 0.9, 11);
+  let shakeY = sh * noise1(fi * 0.9, 29);
+  let shakeR = 0.004 * sh * noise1(fi * 0.7, 47);
+  let glitch = sn.age >= 0 && sn.age < 4 && sn.s > 0.75 ? (1 - sn.age / 4) * 0.55 * snS : 0;
+  let glitchSeed = sn.idx * 31 + fi;
   const bounce = cb.age >= 0 ? clamp(cb.s * 1.4) * ring(cb.age, 9, 0.07) : 0;
-  return {
-    flash: flash * intensity,
-    punch: punch * intensity,
-    ca: ca * intensity,
-    shakeX: shakeX * intensity,
-    shakeY: shakeY * intensity,
-    shakeR: shakeR * intensity,
-    glitch: glitch * intensity,
-    glitchSeed: sn.idx * 31 + fi,
-    bounce: bounce * intensity,
-  };
+  shakeX *= intensity;
+  shakeY *= intensity;
+  shakeR *= intensity;
+  flash *= intensity;
+  punch *= intensity;
+  ca *= intensity;
+  glitch *= intensity;
+
+  // earthquake on every beat (absolute per-section amplitudes)
+  let v = Math.min(TL.beats.length - 1, Math.floor(fi / FPB) + 1);
+  while (v > 0 && TL.beats[v] > fi) v--;
+  const bf = TL.beats[v];
+  const A = quakeAmp(v, bf);
+  if (A > 0) {
+    const down = v % 4 === 0;
+    const [qx, qy, qr] = quake(fi - bf, A, v, down);
+    shakeX += qx;
+    shakeY += qy;
+    shakeR += qr;
+    const age = fi - bf;
+    punch += (down ? 0.075 : 0.042) * Math.max(0, ring(age, 7, 0.05)) * Math.min(1, A / 48);
+    ca += (down ? 12 : 6) * Math.exp(-age / 5) * Math.min(1, A / 48);
+  }
+
+  // one-take cut impacts: flash frame, CA spike, extra quake, glitch smash for glitch cuts
+  for (let c = 1; c < CUTS.length; c++) {
+    const age = fi - CUTS[c];
+    if (age < -6 || age > 40) continue;
+    const type = CUT_TYPES[c - 1];
+    if (age >= 0) {
+      if (age < 2) flash = Math.max(flash, type === 'punch' ? 0.7 : type === 'spin' || type === 'glitch' ? 0.3 : 0);
+      ca += 34 * Math.exp(-age / 6);
+      punch += 0.06 * Math.max(0, ring(age, 9, 0.04));
+      const [qx, qy, qr] = quake(age, 70, CUTS[c], true);
+      shakeX += qx;
+      shakeY += qy;
+      shakeR += qr;
+    }
+    if (type === 'glitch' && age >= -5 && age < 6) {
+      glitch = Math.max(glitch, 1 - Math.abs(age + 0.5) / 7);
+      glitchSeed = CUTS[c] * 13 + fi;
+    }
+  }
+  return {flash, punch, ca, shakeX, shakeY, shakeR, glitch, glitchSeed, bounce: bounce * intensity};
 };
 
 // ------------------------------------------------------------------------------------------ palette

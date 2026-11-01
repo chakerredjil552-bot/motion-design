@@ -1,24 +1,12 @@
-// Scene 3 — the one-take: one global exponential-zoom camera through nested worlds.
-// u = (videoBeat - 12) / 2 ; world i occupies u in [i, i+1). Within a world the zoom is Z^ease(x), so every
-// portal crossing lands exactly on a 2-beat line. Fixed point F makes the portal centre arrive at screen centre.
-import {CX, CY, E, M, P, TAU, TL, W, beatOf, clamp, hits, spring} from '../lib/core';
+// Scene 3 — the skill montage: eight worlds, one per 2 beats, hard cuts exactly on the beat frames with
+// aggressive, varied transitions (portal punch, whip pans, spin, glitch smash). Inside a shot the world holds and
+// reads with a slow push; the hit system adds an earthquake on every beat and an impact on every cut.
+import {CUTS, CUT_TYPES, CX, CY, CutType, E, M, P, TL, W, clamp, hits, lerp, spring} from '../lib/core';
 import {Ctx, FONT, fitSize, text} from '../lib/draw';
 import {advancesP, paintGlyph} from '../lib/glyphs';
 import {WORLDS, Z} from './worlds';
 import {drawBulletHome} from './bullet';
 import {drawShardBlast} from './shatter';
-
-// Speed profile per world: a burst through the portal, a long readable dwell, then an accelerating dive.
-// v(x) = vmin + A (e^{-x/t1} + e^{-(1-x)/t2}); entry and exit speeds match (within 0.5 %), so the camera is
-// C1-continuous across every crossing. e(x) is its integral, normalised to e(1) = 1.
-const VMIN = 0.22;
-const T1 = 0.045;
-const T2 = 0.2;
-const A_V = (1 - VMIN) / (T1 * (1 - Math.exp(-1 / T1)) + T2 * (1 - Math.exp(-1 / T2)));
-const ease = (x: number) =>
-  VMIN * x + A_V * (T1 * (1 - Math.exp(-x / T1)) + T2 * (Math.exp(-(1 - x) / T2) - Math.exp(-1 / T2)));
-
-export const camU = (t: number) => clamp((beatOf(t) - TL.portalBeats[0]) / 2, 0, WORLDS.length);
 
 export const drawWorldNested = (ctx: Ctx, idx: number, t: number, depth: number) => {
   if (idx >= WORLDS.length) {
@@ -43,25 +31,123 @@ export const drawWorldNested = (ctx: Ctx, idx: number, t: number, depth: number)
   ctx.restore();
 };
 
-export const drawOneTake = (ctx: Ctx, t: number, f: number) => {
-  const u = camU(t);
-  let i = Math.floor(u);
-  let x = u - i;
-  if (i >= WORLDS.length) {
-    i = WORLDS.length - 1;
-    x = 1;
-  }
-  const s = Math.pow(Z, ease(x));
+const NOUT = 10; // frames of outgoing move before the cut
+const NIN = 16; // frames of incoming settle after the cut
+
+/** which shot a frame belongs to (decided on the integer frame so a cut never blends across sub-frames) */
+export const shotIndex = (f: number) => {
+  let i = 0;
+  for (let k = 0; k < WORLDS.length; k++) if (f >= CUTS[k]) i = k;
+  return i;
+};
+
+type Cam = {s: number; rot: number; dx: number; dy: number; fx: number; fy: number};
+
+/** transition-only part of the camera (also applied to the title so it leaves with the move) */
+const transCam = (i: number, t: number): Cam => {
   const w = WORLDS[i];
-  const Fx = (Z * w.P[0] - CX) / (Z - 1);
-  const Fy = (Z * w.P[1] - CY) / (Z - 1);
+  const start = CUTS[i];
+  const end = CUTS[i + 1];
+  const lt = t - start;
+  let s = 1;
+  let rot = 0;
+  let dx = 0;
+  let dy = 0;
+  let fx = lerp(CX, w.P[0], 0.5);
+  let fy = lerp(CY, w.P[1], 0.5);
+  // incoming settle
+  const q = clamp(lt / NIN);
+  if (q < 1) {
+    const type: CutType | 'blast' = i === 0 ? 'blast' : CUT_TYPES[i - 1];
+    const ob = 1 - E.outBack(q, 1.25);
+    switch (type) {
+      case 'blast':
+      case 'punch':
+        s *= 1 + 0.6 * (1 - E.outExpo(q));
+        break;
+      case 'whipL':
+        dx += 620 * ob;
+        rot += 0.05 * (1 - E.outCubic(q));
+        break;
+      case 'whipR':
+        dx -= 620 * ob;
+        rot -= 0.05 * (1 - E.outCubic(q));
+        break;
+      case 'whipU':
+        dy += 950 * ob;
+        break;
+      case 'spin':
+        rot -= 1.2 * ob;
+        s *= 1 + 0.9 * (1 - E.outExpo(q));
+        break;
+      case 'glitch':
+        s *= 1 + 0.25 * (1 - E.outExpo(q));
+        break;
+    }
+  }
+  // outgoing move into the next cut
+  const p = clamp((t - (end - NOUT)) / NOUT);
+  if (p > 0) {
+    switch (CUT_TYPES[i]) {
+      case 'punch': {
+        // slam through the portal: scale about the portal centre, which drifts to the frame centre
+        const k = E.inQuad(p);
+        fx = lerp(fx, w.P[0], k);
+        fy = lerp(fy, w.P[1], k);
+        s *= Math.pow(9, E.inExpo(p));
+        break;
+      }
+      case 'whipL':
+        dx -= 1300 * E.inQuart(p);
+        rot -= 0.06 * E.inQuad(p);
+        break;
+      case 'whipR':
+        dx += 1300 * E.inQuart(p);
+        rot += 0.06 * E.inQuad(p);
+        break;
+      case 'whipU':
+        dy -= 2000 * E.inQuart(p);
+        break;
+      case 'spin':
+        rot += 1.2 * E.inCubic(p);
+        s *= 1 + 0.9 * E.inCubic(p);
+        break;
+      case 'glitch':
+        s *= 1 + 0.08 * E.inQuad(p);
+        break;
+    }
+  }
+  return {s, rot, dx, dy, fx, fy};
+};
+
+const applyCam = (ctx: Ctx, c: Cam) => {
+  ctx.translate(c.fx + c.dx, c.fy + c.dy);
+  ctx.rotate(c.rot);
+  ctx.scale(c.s, c.s);
+  ctx.translate(-c.fx, -c.fy);
+};
+
+export const drawOneTake = (ctx: Ctx, t: number, f: number) => {
+  const i = shotIndex(f);
+  // keep the shot's own clock inside its range (sub-frames never leak across the cut)
+  const tt = clamp(t, CUTS[i], CUTS[i + 1] - 0.001);
+  const w = WORLDS[i];
+  const tc = transCam(i, tt);
+  // slow push toward the action inside the shot
+  const push = 1 + 0.09 * E.inOutCubic(clamp((tt - CUTS[i]) / (CUTS[i + 1] - CUTS[i])));
   ctx.save();
-  ctx.translate(Fx, Fy);
-  ctx.scale(s, s);
-  ctx.translate(-Fx, -Fy);
-  drawWorldNested(ctx, i, t, 2);
+  applyCam(ctx, tc);
+  ctx.translate(tc.fx, tc.fy);
+  ctx.scale(push, push);
+  ctx.translate(-tc.fx, -tc.fy);
+  ctx.fillStyle = w.bg;
+  ctx.fillRect(-3000, -3000, W + 6000, 1920 + 6000);
+  drawWorldNested(ctx, i, tt, 1);
   ctx.restore();
-  drawTitle(ctx, t, f, i);
+  ctx.save();
+  applyCam(ctx, tc);
+  drawTitle(ctx, tt, f, i);
+  ctx.restore();
   if (t < M.drop + 30) drawShardBlast(ctx, t);
 };
 
@@ -96,28 +182,33 @@ export const drawSkillTitle = (
     const adv = advancesP(ln, size, FONT.display, 400, 2);
     let x = 70;
     [...ln].forEach((c, ci) => {
-      const la2 = age - 1 - j * 0.9;
-      const sp = spring(la2, 3.4, 0.36, 26);
+      // slam: each letter drops in big and snaps to size with RGB ghosts converging on it
+      const la2 = age - 1 - j * 0.55;
+      const k8 = E.outExpo(clamp(la2 / 8));
+      const sp = spring(la2, 3.6, 0.42, 20);
       const ex = clamp((exitK - j * 0.012) / 0.66); // every letter is fully gone when exitIn reaches 0
-      const yOff = (1 - sp) * size * 0.9 - E.inCubic(ex) * 220;
-      const sc = (1 + 0.5 * (1 - clamp(sp))) * (1 + 0.6 * E.inCubic(ex)) * (1 + 0.04 * bounce);
-      const alpha = clamp(la2 / 3) * (1 - E.inQuad(ex));
+      const yOff = (1 - k8) * -size * 0.35 - E.inCubic(ex) * 220;
+      const sc = (1 + 1.4 * (1 - k8) + 0.06 * (sp - k8)) * (1 + 0.6 * E.inCubic(ex)) * (1 + 0.05 * bounce);
+      const alpha = clamp(la2 / 2) * (1 - E.inQuad(ex));
       if (alpha > 0.01 && c !== ' ') {
         ctx.save();
-        // mask so letters rise out from under the baseline
-        ctx.beginPath();
-        ctx.rect(0, ys[k] - size * 1.25 - 400 * ex, W, size * 1.45 + 400 * ex);
-        ctx.clip();
         ctx.globalAlpha = alpha;
         ctx.translate(x + adv[ci] / 2, ys[k] + yOff);
         ctx.scale(sc, sc);
-        ctx.transform(1, 0, -0.08, 1, 0, 0);
+        ctx.transform(1, 0, -0.1, 1, 0, 0);
         ctx.translate(-adv[ci] / 2, 0);
+        const g = (1 - k8) * 26 + 3;
         ctx.save();
-        ctx.translate(7, 7);
-        paintGlyph(ctx, c, size, FONT.display, 400, {fill: k === 0 ? P.orange : P.neon});
+        ctx.globalAlpha = alpha * (0.55 + 0.45 * (1 - k8));
+        ctx.translate(-g, 0);
+        paintGlyph(ctx, c, size, FONT.display, 400, {fill: P.neon});
+        ctx.translate(2 * g, 4);
+        paintGlyph(ctx, c, size, FONT.display, 400, {fill: P.orange});
         ctx.restore();
         paintGlyph(ctx, c, size, FONT.display, 400, {stroke: '#08070B', lineWidth: 12, fill: P.cream});
+        // white-hot flash on landing
+        const hot = 1 - clamp((la2 - 6) / 6);
+        if (la2 > 5 && hot > 0) paintGlyph(ctx, c, size, FONT.display, 400, {fill: `rgba(255,255,255,${0.7 * hot})`});
         ctx.restore();
       }
       x += adv[ci];
@@ -129,7 +220,7 @@ export const drawSkillTitle = (
 const drawTitle = (ctx: Ctx, t: number, f: number, i: number) => {
   const w = WORLDS[i];
   const age = t - TL.portals[i];
-  const exitIn = TL.portals[i + 1] - t;
+  const exitIn = 999; // montage titles leave with the transition move instead
   const h = hits(f);
   drawSkillTitle(ctx, w.title, `SKILL ${String(i + 1).padStart(2, '0')} / 09`, age, exitIn, h.bounce);
 };

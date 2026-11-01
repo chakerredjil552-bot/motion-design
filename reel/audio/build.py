@@ -385,10 +385,12 @@ def build_sfx(tl):
     place(bus, riser, ft(m["burst"]), gain=0.3)
     # drop boom (layered under the song's own drop kick)
     place(bus, sfx_impact(np.random.default_rng(8), 0.7), ft(m["drop"]), gain=0.45)
-    # portal whooshes
+    # transition whooshes + an impact thud on every montage cut (the last cut is the bullet-time contact)
     for i, pf in enumerate(tl["portals"][1:]):
         w = sfx_whoosh(np.random.default_rng(60 + i), 0.42, 500 + 120 * i, 3500 + 300 * i)
-        place(bus, w, ft(pf) - 0.3, pan=(-0.5 if i % 2 else 0.5), gain=0.16)
+        place(bus, w, ft(pf) - 0.3, pan=(-0.5 if i % 2 else 0.5), gain=0.2)
+        if pf != m["contact"]:
+            place(bus, sfx_impact(np.random.default_rng(160 + i), 0.45), ft(pf), gain=0.32)
     # bullet-time
     place(bus, sfx_impact(np.random.default_rng(9), 0.6), ft(m["contact"]), gain=0.5)
     sw = sfx_reverse_swell(np.random.default_rng(10), 0.55)
