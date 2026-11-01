@@ -151,11 +151,14 @@ def main():
     spec_checks(REELS, "reels", 60, TOTAL // 2, bitrate=(15, 20))
     spec_checks(FALLBACK, "fallback", 30, TOTAL // 4)
     if os.path.exists(MASTER):
-        # only intentional black: the hard cut (and the frame where the closing terminal is still empty)
-        black_ok = [(M["hardcut"] / FPS, M["closing"] / FPS + 0.2)]
+        # intentional black: the hard cut (pure black) and the closing line typed on a near-black terminal
+        # (blackdetect counts a frame as black when >= 98 % of its pixels are dark, so small text on black counts)
+        black_ok = [(M["hardcut"] / FPS, M["punch"] / FPS)]
         bl = intervals(MASTER, "blackdetect=d=0.05:pix_th=0.06", "black_start", "black_end")
         bad = [iv for iv in bl if not within(iv, black_ok)]
-        check("blackdetect: only the intentional hard cut", not bad and bl, f"black {[(round(a, 3), round(b, 3) if b else None) for a, b in bl]}")
+        hc_found = any(s <= M["hardcut"] / FPS + 2 / FPS and (e or 99) >= M["closing"] / FPS - 2 / FPS for s, e in bl)
+        check("blackdetect: black only in the hard cut / closing terminal", not bad, f"black {[(round(a, 3), round(b, 3) if b else None) for a, b in bl]}")
+        check("blackdetect: hard cut 2792-2938 is black", hc_found)
         # only intentional freezes: hard cut, the awkward hold, frozen held frames of the closing/punchline
         freeze_ok = [(M["hardcut"] / FPS, M["closing"] / FPS + 0.2), (M["hold"] / FPS - 0.3, M["glance"] / FPS + 0.1),
                      (M["typeEnd"] / FPS, M["punch"] / FPS + 0.05), (M["bubble"] / FPS, M["outro"] / FPS + 0.05)]
