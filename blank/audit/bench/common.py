@@ -6,17 +6,29 @@ resolves to a CPU implementation, so device strings say so explicitly.
 """
 import json
 import os
+import platform
+import re
 import shutil
 import statistics
 import subprocess
+import tempfile
 import threading
 import time
 
 import psutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RESULTS = os.path.normpath(os.path.join(HERE, "..", "results"))
-SCRATCH = os.environ.get("BLANK_SCRATCH", "/tmp/blank_scratch")
+
+
+def host_tag():
+    """Results folder name: hostname plus whether an NVIDIA GPU is visible."""
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", platform.node() or "host")
+    return f"{name}-{'gpu' if shutil.which('nvidia-smi') else 'cpu'}"
+
+
+RESULTS = os.environ.get(
+    "BLANK_RESULTS", os.path.normpath(os.path.join(HERE, "..", "results", host_tag())))
+SCRATCH = os.environ.get("BLANK_SCRATCH", os.path.join(tempfile.gettempdir(), "blank_scratch"))
 os.makedirs(RESULTS, exist_ok=True)
 os.makedirs(SCRATCH, exist_ok=True)
 
